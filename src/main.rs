@@ -158,6 +158,15 @@ fn handle_request(
         }
 
         // ---- core paste / keys ----
+        "UpdateFeatureFlags" => {
+            let enabled = shift_insert_enabled(&payload);
+            be.set_shift_insert(enabled);
+            log::info!(
+                "paste shortcut -> {}",
+                if enabled { "Shift+Insert" } else { "Ctrl+V" }
+            );
+            ipc.send(&proto::ack(uuid));
+        }
         "PasteText" => {
             let text = payload.get("text").and_then(Value::as_str).unwrap_or("");
             let html = payload.get("htmlText").and_then(Value::as_str).filter(|s| !s.is_empty());
@@ -290,5 +299,33 @@ fn handle_request(
             log::debug!("unhandled command '{other}' (uuid={uuid}) — ACK no-op");
             ipc.send(&proto::ack(uuid));
         }
+    }
+}
+
+fn shift_insert_enabled(payload: &Value) -> bool {
+    payload
+        .pointer("/featureFlags/shift-insert/enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shift_insert_enabled;
+    use serde_json::json;
+
+    #[test]
+    fn reads_shift_insert_from_update_feature_flags_payload() {
+        let payload = json!({
+            "featureFlags": {
+                "shift-insert": { "enabled": true }
+            }
+        });
+        assert!(shift_insert_enabled(&payload));
+    }
+
+    #[test]
+    fn missing_shift_insert_flag_is_disabled() {
+        assert!(!shift_insert_enabled(&json!({ "featureFlags": {} })));
     }
 }

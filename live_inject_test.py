@@ -7,7 +7,7 @@ a real file through a text editor:
   1. Create an empty temp file and open it in a GUI editor (auto-detected, or
      pass one explicitly). Opening a *file* avoids editors' "welcome" screens
      where the text area isn't focused (KWrite/Kate/gnome-text-editor do this).
-  2. PasteText "<MARKER>" via the helper (sets clipboard + injects Ctrl+V).
+  2. PasteText "<MARKER>" via the helper (sets clipboard + injects Shift+Insert).
   3. SimulateKeyPress Ctrl+S via the helper (a multi-modifier chord) to save.
   4. Read the file back: PASS iff it contains the marker.
 
@@ -129,7 +129,7 @@ def main():
         ed = subprocess.Popen([editor, target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(4.0)  # let it map, open the file, and focus the text area
 
-    print("[3] PasteText marker -> editor (Ctrl+V)")
+    print("[3] PasteText marker -> editor (Shift+Insert)")
     send({"PasteText": {"payload": {"text": MARKER, "htmlText": "", "transcriptEntityUUID": ""}}}, "PasteText")
     time.sleep(1.0)
 
@@ -162,7 +162,7 @@ def main():
           + ", ".join(sorted({k for e in events for k in e.get('HelperAPIResponse', {}) if k != 'uuid'})))
 
     if MARKER in got:
-        print("\n✅ PASS — PasteText Ctrl+V landed in the focused app AND the Ctrl+S chord saved it.")
+        print("\n✅ PASS — PasteText Shift+Insert landed in the focused app AND the Ctrl+S chord saved it.")
         return 0
     else:
         print("\n❌ FAIL — marker not in the file: injection did not reach the editor "

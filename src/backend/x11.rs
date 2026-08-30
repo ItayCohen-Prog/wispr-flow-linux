@@ -4,7 +4,7 @@
 //!   * GetActiveAppInfo  — `_NET_ACTIVE_WINDOW` -> `_NET_WM_PID` (/proc) + `_NET_WM_NAME` + `WM_CLASS`
 //!   * GetRunningApps    — `_NET_CLIENT_LIST` -> per-window `WM_CLASS` / `_NET_WM_NAME`
 //!   * SimulateKeyPress  — VK -> keysym (keymap.rs) -> keycode (server mapping) -> XTEST
-//!   * PasteText         — set clipboard + synth Ctrl+V (Ctrl+V via XTEST)
+//!   * PasteText         — set clipboard + synth Shift+Insert by default (via XTEST)
 //!   * GetSelectedText   — copy-probe: save clipboard, Ctrl+C, read, restore (approximate)
 //!
 //! Pragmatic-baseline caveats (marked TODO):
@@ -23,7 +23,7 @@ use x11rb::protocol::xtest::ConnectionExt as _;
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _; // provides `sync()`
 
-use super::{ActiveApp, Backend, Result, RunningApp, Selection};
+use super::{ActiveApp, Backend, PasteShortcut, Result, RunningApp, Selection};
 use crate::keymap;
 
 // XTEST `type` field == X event type: KeyPress=2, KeyRelease=3.
@@ -38,6 +38,7 @@ pub struct X11Backend {
     keysym_to_keycode: std::collections::HashMap<u32, u8>,
     has_xclip: bool,
     has_xsel: bool,
+    paste_shortcut: PasteShortcut,
 }
 
 struct Atoms {
@@ -89,6 +90,7 @@ impl X11Backend {
             keysym_to_keycode,
             has_xclip,
             has_xsel,
+            paste_shortcut: PasteShortcut::default(),
         })
     }
 
@@ -227,13 +229,17 @@ impl X11Backend {
 
 impl Backend for X11Backend {
     fn paste_text(&mut self, text: &str, _html: Option<&str>) -> Result<()> {
-        // Clipboard-based paste (matches the Windows helper): set clipboard, synth Ctrl+V.
+        // Clipboard-based paste: set clipboard, then synthesize the configured
+        // paste chord (Shift+Insert for terminal-safe bracketed paste).
         // TODO: save & restore the user's prior clipboard around the paste; offer text/html.
         self.clipboard_set(text)?;
-        // brief settle so the new owner is registered before Ctrl+V reads it
+        // Brief settle so the new owner is registered before the target reads it.
         std::thread::sleep(std::time::Duration::from_millis(20));
-        let ctrl = keymap::flag_to_keysym("Control").unwrap();
-        self.press_chord(b'v' as u32, &[ctrl])?;
+        let modifier = keymap::flag_to_keysym(self.paste_shortcut.modifier())
+            .ok_or("no X11 keysym for paste modifier")?;
+        let key = keymap::vk_to_keysym(self.paste_shortcut.key_vk())
+            .ok_or("no X11 keysym for paste key")?;
+        self.press_chord(key, &[modifier])?;
         Ok(())
     }
 
@@ -342,6 +348,10 @@ impl Backend for X11Backend {
         // X11 + XTEST present == we can inject/read; AT-SPI reachability check lands
         // with the AT-SPI selection work. Report true when the connection is live.
         true
+    }
+
+    fn set_shift_insert(&mut self, enabled: bool) {
+        self.paste_shortcut = PasteShortcut::from_shift_insert(enabled);
     }
 
     fn name(&self) -> &'static str {

@@ -18,6 +18,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::io::AsRawFd;
+use std::time::{Duration, Instant};
 
 use super::Result;
 use crate::keymap;
@@ -38,6 +39,14 @@ const UI_SET_EVBIT: libc::c_ulong = 0x40045564;
 const UI_SET_KEYBIT: libc::c_ulong = 0x40045565;
 
 const BUS_USB: u16 = 0x03;
+/// Name the virtual keyboard registers under (`EVIOCGNAME`); [`held_modifiers`]
+/// skips devices carrying it so the helper never waits on its own keys.
+const DEVICE_NAME: &[u8] = b"Wispr Flow Linux Helper";
+/// How long `chord` waits for the user's physically-held modifiers to come up
+/// before injecting anyway (they then combine with the chord, which is the
+/// worst case — never a stuck key).
+const HELD_MODIFIER_TIMEOUT: Duration = Duration::from_millis(1000);
+const HELD_MODIFIER_POLL: Duration = Duration::from_millis(5);
 /// We enable the full standard key range so any mapped VK can be injected.
 const KEY_MAX: u16 = 0x2ff;
 
@@ -77,7 +86,7 @@ impl UInput {
         // Legacy device-setup path (write a uinput_user_dev, then UI_DEV_CREATE):
         // widely supported and avoids the newer UI_DEV_SETUP/abs_setup structs.
         let mut dev: libc::uinput_user_dev = unsafe { std::mem::zeroed() };
-        let name = b"Wispr Flow Linux Helper";
+        let name = DEVICE_NAME;
         for (i, &b) in name.iter().enumerate() {
             dev.name[i] = b as libc::c_char;
         }
@@ -153,30 +162,79 @@ impl UInput {
     /// bug, not the fix — verified: 0 ms → modifier applied, ≥8 ms → dropped.
     /// See docs/learnings/wayland-injection.md.
     ///
-    /// Mirrors the Windows helper's GetKeyState dance: any modifier the user is
-    /// *physically* holding at injection time is released first and restored
-    /// afterwards, so e.g. a held Ctrl doesn't turn our injected `v` into a
-    /// stray Ctrl+V (or our injected Ctrl+V into Ctrl+Shift+V). When
-    /// `/dev/input` isn't readable (no `input` group / uaccess ACL), the held
-    /// set is empty and this degrades to a plain chord — see [`held_modifiers`].
+    /// Any modifier the user is *physically* holding at injection time would
+    /// combine with the chord (a held Ctrl turns an injected `v` into Ctrl+V, a
+    /// held Shift turns Ctrl+V into Ctrl+Shift+V). The Windows helper handles
+    /// that with a GetKeyState release/restore dance; that is NOT portable to
+    /// evdev and must never be reintroduced here: a release written to *this*
+    /// device for a key that is down on the *physical* keyboard is dropped by
+    /// the kernel input core (redundant key events never reach the compositor),
+    /// so nothing is released — while the matching "restore" press is a real
+    /// press on the virtual keyboard that nobody ever releases. Hyprland
+    /// (`shareModsFromAllKBs`) then ORs that stuck modifier into every key and
+    /// click on every device, session-wide, until the helper dies. Instead,
+    /// `chord` waits (bounded, [`HELD_MODIFIER_TIMEOUT`]) for the user's
+    /// modifiers to come up, and only ever presses keys it releases itself —
+    /// including on the error path. See [`held_modifiers`], [`chord_events`].
     pub fn chord(&mut self, key: u16, mods: &[u16]) -> Result<()> {
-        let held = held_modifiers();
-        for &m in &held {
-            let _ = self.key(m, false);
+        let released =
+            wait_until_released(held_modifiers, HELD_MODIFIER_TIMEOUT, HELD_MODIFIER_POLL);
+        if !released {
+            log::warn!(
+                "chord: modifiers still physically held after {HELD_MODIFIER_TIMEOUT:?}; injecting anyway"
+            );
         }
-        for &m in mods {
-            self.key(m, true)?;
+        let mut down: Vec<u16> = Vec::with_capacity(mods.len() + 1);
+        let result = self.emit_chord(key, mods, &mut down);
+        // Whatever failed above, never leave a key down on the virtual device.
+        for &code in down.iter().rev() {
+            let _ = self.key(code, false);
         }
-        self.key(key, true)?;
-        self.key(key, false)?;
-        for &m in mods.iter().rev() {
-            self.key(m, false)?;
-        }
-        // Restore physically-held modifiers (reverse order). Best-effort.
-        for &m in held.iter().rev() {
-            let _ = self.key(m, true);
+        result
+    }
+
+    fn emit_chord(&mut self, key: u16, mods: &[u16], down: &mut Vec<u16>) -> Result<()> {
+        for (code, press) in chord_events(key, mods) {
+            self.key(code, press)?;
+            if press {
+                down.push(code);
+            } else {
+                down.retain(|&c| c != code);
+            }
         }
         Ok(())
+    }
+}
+
+/// The exact event sequence [`UInput::chord`] writes: modifiers down in order,
+/// key tap, modifiers up in reverse. Pure, so the invariants "everything pressed
+/// is released" and "only chord keys are touched" are unit-tested without
+/// `/dev/uinput`.
+pub fn chord_events(key: u16, mods: &[u16]) -> Vec<(u16, bool)> {
+    let mut events = Vec::with_capacity(mods.len() * 2 + 2);
+    events.extend(mods.iter().map(|&m| (m, true)));
+    events.push((key, true));
+    events.push((key, false));
+    events.extend(mods.iter().rev().map(|&m| (m, false)));
+    events
+}
+
+/// Poll `held` (a snapshot of physically-held modifiers) every `poll` until it
+/// is empty or `timeout` elapses. Returns whether the modifiers came up in time.
+pub fn wait_until_released(
+    mut held: impl FnMut() -> Vec<u16>,
+    timeout: Duration,
+    poll: Duration,
+) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if held().is_empty() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(poll);
     }
 }
 
@@ -184,7 +242,10 @@ impl UInput {
 /// querying every readable `/dev/input/event*` device with `EVIOCGKEY` (a
 /// bitmap of currently-pressed keycodes) and intersecting with the modifier set.
 ///
-/// Returns an empty list — and is therefore a no-op for `chord` — when no event
+/// The helper's own virtual keyboard is skipped (by [`DEVICE_NAME`]) so a key
+/// it holds can never make `chord` wait on itself.
+///
+/// Returns an empty list — so `chord` injects immediately — when no event
 /// device is readable. Reading `/dev/input` typically needs the `input` group
 /// or the logind `uaccess` ACL; on sessions without it, the snapshot is simply
 /// skipped (the common case at paste time has no modifier held anyway).
@@ -218,6 +279,9 @@ pub fn held_modifiers() -> Vec<u16> {
             Ok(f) => f,
             Err(_) => continue, // not readable -> skip this device
         };
+        if device_name(file.as_raw_fd()).as_deref() == Some(DEVICE_NAME) {
+            continue; // our own virtual keyboard
+        }
         let mut bitmap = [0u8; BITMAP_LEN];
         let r = unsafe { libc::ioctl(file.as_raw_fd(), req, bitmap.as_mut_ptr()) };
         if r < 0 {
@@ -231,6 +295,20 @@ pub fn held_modifiers() -> Vec<u16> {
         }
     }
     held.into_iter().collect()
+}
+
+/// `EVIOCGNAME`: the device's name, NUL-trimmed. `None` when the ioctl fails.
+fn device_name(fd: libc::c_int) -> Option<Vec<u8>> {
+    const LEN: usize = 128;
+    // EVIOCGNAME(len) = _IOC(_IOC_READ=2, 'E'=0x45, 0x06, len).
+    let req: libc::c_ulong =
+        ((2u64 << 30) | ((LEN as u64) << 16) | (0x45 << 8) | 0x06) as libc::c_ulong;
+    let mut buf = [0u8; LEN];
+    if unsafe { libc::ioctl(fd, req, buf.as_mut_ptr()) } < 0 {
+        return None;
+    }
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(LEN);
+    Some(buf[..end].to_vec())
 }
 
 impl Drop for UInput {
@@ -247,4 +325,122 @@ fn ioctl_set(fd: libc::c_int, req: libc::c_ulong, arg: libc::c_int) -> Result<()
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// Replay an event sequence against a model of the virtual device's key
+    /// state (what the kernel tracks per device) and return what is still down.
+    fn keys_down_after(events: &[(u16, bool)]) -> BTreeSet<u16> {
+        let mut down = BTreeSet::new();
+        for &(code, press) in events {
+            if press {
+                down.insert(code);
+            } else {
+                down.remove(&code);
+            }
+        }
+        down
+    }
+
+    const KEY_V: u16 = 47;
+    const KEY_LEFTCTRL: u16 = 29;
+    const KEY_LEFTSHIFT: u16 = 42;
+    const KEY_LEFTALT: u16 = 56;
+
+    /// Regression guard for the session-wide stuck-Ctrl bug: after a chord the
+    /// virtual keyboard must hold no keys, for any modifier set.
+    #[test]
+    fn chord_leaves_no_key_down() {
+        let cases: &[&[u16]] = &[
+            &[],
+            &[KEY_LEFTCTRL],
+            &[KEY_LEFTCTRL, KEY_LEFTSHIFT],
+            &[KEY_LEFTALT, KEY_LEFTSHIFT, KEY_LEFTCTRL],
+        ];
+        for mods in cases {
+            let events = chord_events(KEY_V, mods);
+            assert!(
+                keys_down_after(&events).is_empty(),
+                "keys left down for mods {mods:?}: {events:?}"
+            );
+            let presses = events.iter().filter(|e| e.1).count();
+            let releases = events.len() - presses;
+            assert_eq!(presses, releases, "unbalanced chord for {mods:?}");
+        }
+    }
+
+    /// The chord must never write events for keys outside the chord itself —
+    /// in particular no release/restore of the user's physical modifiers, which
+    /// on evdev cannot release anything and leaves the restore press stuck.
+    #[test]
+    fn chord_touches_only_its_own_keys() {
+        let mods = [KEY_LEFTCTRL];
+        let allowed: BTreeSet<u16> = [KEY_V, KEY_LEFTCTRL].into_iter().collect();
+        for (code, _) in chord_events(KEY_V, &mods) {
+            assert!(allowed.contains(&code), "chord touched foreign key {code}");
+        }
+    }
+
+    #[test]
+    fn chord_order_is_mods_down_tap_mods_up_reversed() {
+        assert_eq!(
+            chord_events(KEY_V, &[KEY_LEFTCTRL, KEY_LEFTSHIFT]),
+            vec![
+                (KEY_LEFTCTRL, true),
+                (KEY_LEFTSHIFT, true),
+                (KEY_V, true),
+                (KEY_V, false),
+                (KEY_LEFTSHIFT, false),
+                (KEY_LEFTCTRL, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn wait_returns_at_once_when_nothing_is_held() {
+        let mut polls = 0;
+        let released = wait_until_released(
+            || {
+                polls += 1;
+                Vec::new()
+            },
+            Duration::from_millis(50),
+            Duration::from_millis(1),
+        );
+        assert!(released);
+        assert_eq!(polls, 1);
+    }
+
+    #[test]
+    fn wait_returns_once_modifiers_come_up() {
+        let mut remaining = 3;
+        let released = wait_until_released(
+            || {
+                if remaining > 0 {
+                    remaining -= 1;
+                    vec![KEY_LEFTCTRL]
+                } else {
+                    Vec::new()
+                }
+            },
+            Duration::from_secs(5),
+            Duration::from_millis(1),
+        );
+        assert!(released);
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn wait_gives_up_after_timeout() {
+        let timeout = Duration::from_millis(20);
+        let start = Instant::now();
+        let released =
+            wait_until_released(|| vec![KEY_LEFTCTRL], timeout, Duration::from_millis(1));
+        assert!(!released);
+        assert!(start.elapsed() >= timeout);
+    }
 }

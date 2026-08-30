@@ -7,7 +7,7 @@
 //! (`wl-copy`/`wl-paste`).
 //!
 //! Implemented:
-//!   * PasteText        — wl-copy the text, then uinput Ctrl+V
+//!   * PasteText        — wl-copy the text, then uinput Shift+Insert by default
 //!   * SimulateKeyPress — VK -> evdev (keymap.rs) -> uinput chord
 //!   * GetSelectedText  — copy-probe: save clipboard, uinput Ctrl+C, read, restore
 //!   * GetAccessibilityStatus — true when uinput is usable
@@ -27,7 +27,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use super::uinput::UInput;
-use super::{ActiveApp, Backend, Result, RunningApp, Selection};
+use super::{ActiveApp, Backend, PasteShortcut, Result, RunningApp, Selection};
 use crate::keymap;
 
 /// Wayland injection + clipboard + selection. Active-app identity is **not**
@@ -39,6 +39,7 @@ pub struct WaylandBackend {
     uinput: UInput,
     has_wl_copy: bool,
     has_wl_paste: bool,
+    paste_shortcut: PasteShortcut,
 }
 
 impl WaylandBackend {
@@ -54,6 +55,7 @@ impl WaylandBackend {
             uinput,
             has_wl_copy,
             has_wl_paste,
+            paste_shortcut: PasteShortcut::default(),
         })
     }
 
@@ -100,13 +102,15 @@ impl WaylandBackend {
 impl Backend for WaylandBackend {
     fn paste_text(&mut self, text: &str, html: Option<&str>) -> Result<()> {
         // Offer text/plain (+ text/html when supplied), like the Windows helper's
-        // dual-format clipboard, then synthesize Ctrl+V.
+        // dual-format clipboard, then synthesize the configured paste chord.
         self.clipboard_set_rich(text, html)?;
-        // Let the new selection owner register before Ctrl+V reads it.
+        // Let the new selection owner register before the target reads it.
         std::thread::sleep(std::time::Duration::from_millis(30));
-        let ctrl = keymap::flag_to_evdev("Control").unwrap();
-        let v = keymap::vk_to_evdev(b'V' as u32).ok_or("no evdev for V")?;
-        self.uinput.chord(v, &[ctrl])
+        let modifier = keymap::flag_to_evdev(self.paste_shortcut.modifier())
+            .ok_or("no evdev code for paste modifier")?;
+        let key = keymap::vk_to_evdev(self.paste_shortcut.key_vk())
+            .ok_or("no evdev code for paste key")?;
+        self.uinput.chord(key, &[modifier])
     }
 
     fn simulate_key_press(&mut self, keycode_vk: u32, flags: &[String]) -> Result<()> {
@@ -116,8 +120,8 @@ impl Backend for WaylandBackend {
             .iter()
             .filter_map(|f| keymap::flag_to_evdev(f))
             .collect();
-        // TODO: snapshot & release physically-held modifiers around injection
-        // (mirrors the Windows helper's GetKeyState dance); needs /dev/input read.
+        // Physically-held modifiers: `chord` waits for them to come up (bounded).
+        // Do NOT release/restore them on the virtual device — see `UInput::chord`.
         self.uinput.chord(key, &mods)
     }
 
@@ -162,6 +166,10 @@ impl Backend for WaylandBackend {
         // We hold a live uinput device => injection works. (Reading selection via
         // AT-SPI is a separate capability tracked under get_selected_text.)
         true
+    }
+
+    fn set_shift_insert(&mut self, enabled: bool) {
+        self.paste_shortcut = PasteShortcut::from_shift_insert(enabled);
     }
 
     fn set_focus_detection(&mut self, _active: bool) {

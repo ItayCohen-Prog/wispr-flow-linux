@@ -23,6 +23,46 @@ pub type Result<T> = std::result::Result<T, String>;
 /// this, so emitting from any thread (e.g. the KWin zbus dispatcher) is safe.
 pub type EventSink = std::sync::mpsc::Sender<serde_json::Value>;
 
+/// Clipboard paste chord selected by Wispr's `shift-insert` feature flag.
+/// Terminals treat a raw Ctrl+V key event as an application shortcut (Codex
+/// uses it for image paste), while Shift+Insert is handled by the terminal as
+/// text paste and arrives as bracketed paste input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PasteShortcut {
+    ControlV,
+    ShiftInsert,
+}
+
+impl Default for PasteShortcut {
+    fn default() -> Self {
+        Self::ShiftInsert
+    }
+}
+
+impl PasteShortcut {
+    pub(crate) fn from_shift_insert(enabled: bool) -> Self {
+        if enabled {
+            Self::ShiftInsert
+        } else {
+            Self::ControlV
+        }
+    }
+
+    pub(crate) fn key_vk(self) -> u32 {
+        match self {
+            Self::ControlV => b'V' as u32,
+            Self::ShiftInsert => 45,
+        }
+    }
+
+    pub(crate) fn modifier(self) -> &'static str {
+        match self {
+            Self::ControlV => "Control",
+            Self::ShiftInsert => "Shift",
+        }
+    }
+}
+
 /// Result of `GetActiveAppInfo` / `GetAppInfo` (subset we can fill on Linux).
 #[derive(Debug, Default, Clone)]
 pub struct ActiveApp {
@@ -51,7 +91,8 @@ pub struct RunningApp {
 }
 
 pub trait Backend: Send {
-    /// `PasteText`: set the clipboard to `text` (+ optional `html`) and synthesize Ctrl+V.
+    /// `PasteText`: set the clipboard to `text` (+ optional `html`) and synthesize
+    /// the configured paste shortcut.
     fn paste_text(&mut self, text: &str, html: Option<&str>) -> Result<()>;
 
     /// `SimulateKeyPress`: `keycode` is a **Windows VK code** (see keymap.rs); `flags`
@@ -69,6 +110,12 @@ pub trait Backend: Send {
 
     /// `GetAccessibilityStatus`: whether the accessibility/automation path is usable.
     fn accessibility_status(&mut self) -> bool;
+
+    /// Select the clipboard paste chord. Wispr sends this through
+    /// `UpdateFeatureFlags` before normal dictation begins.
+    fn set_shift_insert(&mut self, enabled: bool) {
+        let _ = enabled;
+    }
 
     /// `SetFocusChangeDetectorState`: enable/disable emitting `AppInfoUpdate`
     /// focus events on fd 3. Default no-op for backends without focus tracking.
@@ -210,6 +257,10 @@ impl Backend for Composed {
 
     fn accessibility_status(&mut self) -> bool {
         self.inner.accessibility_status()
+    }
+
+    fn set_shift_insert(&mut self, enabled: bool) {
+        self.inner.set_shift_insert(enabled);
     }
 
     fn set_focus_detection(&mut self, active: bool) {
@@ -354,4 +405,30 @@ fn is_gnome() -> bool {
     probe("XDG_CURRENT_DESKTOP").contains("GNOME")
         || probe("XDG_SESSION_DESKTOP").contains("GNOME")
         || std::env::var_os("GNOME_SHELL_SESSION_MODE").is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PasteShortcut;
+
+    #[test]
+    fn paste_shortcut_uses_shift_insert_when_enabled() {
+        let shortcut = PasteShortcut::from_shift_insert(true);
+        assert_eq!(shortcut.key_vk(), 45);
+        assert_eq!(shortcut.modifier(), "Shift");
+    }
+
+    #[test]
+    fn paste_shortcut_startup_default_is_shift_insert() {
+        let shortcut = PasteShortcut::default();
+        assert_eq!(shortcut.key_vk(), 45);
+        assert_eq!(shortcut.modifier(), "Shift");
+    }
+
+    #[test]
+    fn disabled_shift_insert_flag_selects_control_v() {
+        let shortcut = PasteShortcut::from_shift_insert(false);
+        assert_eq!(shortcut.key_vk(), b'V' as u32);
+        assert_eq!(shortcut.modifier(), "Control");
+    }
 }
