@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "wispr.flowbar",
+  "name": "Wispr Flow bar",
+  "version": "0.1.0",
+  "author": "wispr-flow-linux",
+  "license": "Unlicense",
+  "description": "Native layer-shell Flow Bar for Wispr Flow on Omarchy: draws the dictation pill and notifications from the app's status IPC over a Unix socket.",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "FlowBar.qml"
+  }
+}

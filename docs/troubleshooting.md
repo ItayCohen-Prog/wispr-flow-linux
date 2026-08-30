@@ -236,6 +236,61 @@ to the `[WARN]` lines from Step 0 for which one.
 
 See the helper section of [building.md](building.md#the-clean-room-helper-prebuilt-with-a-helper_bin-override).
 
+## Clicking the tray icon does nothing (right-click menu works)
+
+Your bar sends the StatusNotifierItem `Activate` call on left-click (waybar,
+KDE Plasma, omarchy-shell/quickshell all do; GNOME's AppIndicator extension
+opens the menu instead). Electron maps `Activate` to a tray `click` event that
+upstream Wispr Flow never handles, so builds before the `linux-tray-click.sh`
+patch ignore it.
+
+### Fix
+
+Update to a build that carries the `WISPR_LINUX_TRAY_CLICK` marker
+(`scripts/verify-patches.sh <app.asar>` lists it). Until then, right-click the
+icon and pick **Open Wispr Flow**. To confirm it is the click path and not the
+app, trigger the menu item over D-Bus and watch the Hub appear:
+
+```bash
+# find the item, then fire its "Open Wispr Flow" entry
+busctl --user get-property org.kde.StatusNotifierWatcher \
+  /StatusNotifierWatcher org.kde.StatusNotifierWatcher \
+  RegisteredStatusNotifierItems
+busctl --user call :1.NNN /com/canonical/dbusmenu com.canonical.dbusmenu \
+  GetLayout iias 0 -- -1 0 | grep -o '[0-9]* 1 "label" s "Open Wispr Flow"'
+busctl --user call :1.NNN /com/canonical/dbusmenu com.canonical.dbusmenu \
+  Event isvu <id> clicked s "" 0
+```
+
+## The Hub can't be moved, resized, maximized, tiled or Alt-Tabbed to
+
+The window is an X11 override-redirect (unmanaged) window: `xwininfo -id <id>`
+prints `Override Redirect State: yes` and `wmctrl -l` does not list it.
+Upstream creates the Hub with `focusable:false` on every platform, and
+Chromium's X11 backend makes any non-activatable top-level override-redirect.
+Under XWayland compositors (Hyprland, sway) the same window is always floating,
+has no border/shadow and ignores activation requests.
+
+### Fix
+
+Update to a build that carries the `WISPR_LINUX_HUB_FOCUSABLE` marker. There
+is no runtime workaround short of the patch; the Close control is the only one
+that works on an unmanaged window. See
+[issue #36](https://github.com/wispr-flow-linux/wispr-flow-linux/issues/36).
+
+## The Flow Bar is a bordered window in the middle of the screen
+
+Electron is running on native Wayland (`WISPR_USE_WAYLAND=1`, or the native
+Flow Bar mode) without the omarchy-shell plugin drawing the bar, so the
+transparent status window is treated as a normal toplevel: centred, bordered,
+tiled.
+
+### Fix
+
+Either install the plugin (`scripts/omarchy/install-flowbar-plugin.sh`, then
+restart Wispr Flow) or go back to XWayland: unset `WISPR_USE_WAYLAND` and set
+`WISPR_NATIVE_FLOWBAR=0`.
+
 ## More
 
 Curious which setups are actually validated, and which are only wired through?

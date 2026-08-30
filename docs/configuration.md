@@ -19,8 +19,9 @@ input-method overrides the claude-desktop reference had.
 
 | Variable | Default | Description |
 |---|---|---|
-| `WISPR_USE_WAYLAND` | unset | Set to `1` to force native Wayland (Ozone): pins `--ozone-platform=wayland`, enables the Wayland IME path, and exports `GDK_BACKEND=wayland`. Without it, Electron 42 auto-detects Wayland/X11. |
+| `WISPR_USE_WAYLAND` | unset | Set to `1` to force native Wayland (Ozone): pins `--ozone-platform=wayland`, enables the Wayland IME path, and exports `GDK_BACKEND=wayland`. The default on a Wayland session is XWayland so the Flow Bar patch can move and resize its cropped OS surface reliably. |
 | `WISPR_DISABLE_GPU` | unset | Set to `1` to pass `--disable-gpu --disable-software-rasterizer`. Workaround for blank windows / GPU-process crashes on broken drivers or remote sessions. Also applied automatically inside XRDP sessions. |
+| `WISPR_NATIVE_FLOWBAR` | auto | `1` forces, `0` disables the native Flow Bar mode. Unset, the launcher enables it when `$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock` exists (the omarchy-shell plugin is running): Electron then runs on native Wayland and the shell draws the Flow Bar. See [Native Flow Bar on Omarchy](#native-flow-bar-on-omarchy). |
 
 ```bash
 # One-off:
@@ -31,11 +32,21 @@ WISPR_DISABLE_GPU=1 wispr-flow
 echo 'export WISPR_DISABLE_GPU=1' >> ~/.profile
 ```
 
-> [!NOTE]
-> Unlike the claude-desktop reference, the default does **not** force XWayland.
-> Wispr Flow's keystroke injection uses an in-process `/dev/uinput` virtual
-> keyboard (not X11 XTEST global hotkeys), so native Wayland is the validated
-> default. See [learnings/wayland-injection.md](learnings/wayland-injection.md).
+> [!IMPORTANT]
+> `WISPR_USE_WAYLAND=1` is a diagnostic escape hatch. Electron 42 cannot apply
+> partial mouse-input regions to the transparent Flow Bar window on native
+> Wayland. The Linux patch instead maps a tightly cropped XWayland surface only
+> around visible UI and unmaps it while idle. This does not change Wispr Flow's
+> `/dev/uinput`, `/dev/input`, or `wl-clipboard` integration. See
+> [learnings/wayland-injection.md](learnings/wayland-injection.md).
+
+## Idle Flow Bar behavior
+
+The Linux patch leaves the status window completely unmapped while idle. It
+maps only a small surface around the visible bar while the dictation shortcut
+is recording or processing, then unmaps it again. A notification temporarily
+maps a tightly cropped, focusable surface so its buttons and close control can
+be clicked; dismissing it unmaps the surface.
 
 ## Where state lives
 
@@ -136,3 +147,42 @@ display server, `/dev/uinput` writability, `input` group membership, clipboard
 tools, AT-SPI, the GNOME extension (on GNOME), the helper binary, the singleton
 lock, and recent crashes. For reading its output, see
 [troubleshooting.md](troubleshooting.md).
+
+## Native Flow Bar on Omarchy
+
+On Omarchy the Flow Bar can be drawn by an omarchy-shell (Quickshell) plugin
+as a layer-shell surface instead of Electron's XWayland window, which lets the
+app run on native Wayland: the Hub becomes a normal managed window with
+per-monitor scaling and the bar is anchored, click-through and themed.
+Notifications go through the desktop notification daemon (top-right toasts,
+history, do-not-disturb all apply); clicking a toast runs the notification's
+primary action, closing it dismisses.
+
+```bash
+scripts/omarchy/install-flowbar-plugin.sh      # link + enable wispr.flowbar
+wispr-flow                                     # launcher detects the socket
+scripts/omarchy/install-flowbar-plugin.sh --uninstall
+```
+
+How it fits together:
+
+- `omarchy/plugins/wispr.flowbar/` (plugin) serves
+  `$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock`.
+- `scripts/patches/linux-native-flowbar.sh` (main bundle) mirrors every
+  `status:*` / `notification:*` IPC message to that socket as JSON lines,
+  accepts `status:startClicked|stopClicked|cancelClicked` and
+  `notification:callback` back, and never maps the Electron status window.
+  The hidden status renderer keeps owning microphone capture.
+- `scripts/extract-flowbar-strings.sh` (build) ships the renderer's English
+  string table as `resources/flowbar-strings.en.json` so i18n `{key}`
+  notification texts render natively.
+- The launcher switches to `--ozone-platform=wayland` when the socket exists;
+  `WISPR_NATIVE_FLOWBAR=0` restores the XWayland mode.
+
+Scripted checks (the plugin exposes an IPC target):
+
+```bash
+omarchy-shell wisprflowbar inject '{"t":"status:audioLevel","p":0.7}'
+omarchy-shell wisprflowbar press status:stopClicked
+omarchy-shell wisprflowbar state
+```

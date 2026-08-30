@@ -11,6 +11,10 @@
 #     * mac-gates.sh           -> gates the macOS Applications-folder guard
 #     * linux-window-frame.sh  -> frameless hub/settings window on Linux
 #     * linux-deeplink.sh      -> cold-start wispr-flow: argv parse on Linux
+#     * linux-flowbar-shape.sh -> OS surface is cropped to visible status UI
+#     * linux-tray-click.sh    -> tray left-click (SNI Activate) opens the Hub
+#     * linux-hub-focusable.sh -> Hub is focusable (not override-redirect) on X11
+#     * linux-native-flowbar.sh -> status IPC mirrored to the shell socket
 #   renderer bundles:
 #     * linux-renderer-chrome.sh -> remaps the <html> platform class linux->win32
 #     * linux-renderer-treat-as-windows.sh -> widens each renderer's isWindows
@@ -48,6 +52,10 @@ MARKERS=(
   "window-frame: linux frameless window branch|F|WISPR_LINUX_FRAMELESS"
   "treat-as-windows: linux widens renderer isWindows bind|F|WISPR_LINUX_RENDERER_ISWIN"
   "deeplink: linux cold-start argv parse|F|WISPR_LINUX_DEEPLINK"
+  "flowbar: cropped visible surface and idle unmapping|F|WISPR_LINUX_FLOWBAR_CROPPED_SURFACE"
+  "tray-click: linux tray left-click opens the Hub|F|WISPR_LINUX_TRAY_CLICK"
+  "hub-focusable: linux Hub window is focusable (managed)|F|WISPR_LINUX_HUB_FOCUSABLE"
+  "native-flowbar: linux status IPC mirrored to shell socket|F|WISPR_LINUX_NATIVE_FLOWBAR"
 )
 
 missing=0
@@ -70,7 +78,7 @@ done
 if [[ "$missing" != "0" ]]; then
   echo "ERROR: app.asar is missing one or more Linux patch markers -- the bundle is" >&2
   echo "       unpatched or half-patched. Refusing to treat this as a good build." >&2
-  echo "       Re-run patch-helper-resolver.sh / patch-mac-gates.sh before repacking." >&2
+  echo "       Re-run the main and renderer patch suite before repacking." >&2
   exit 1
 fi
 

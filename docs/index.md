@@ -24,7 +24,8 @@ protocol — the contract everything else hangs off — is in
 - [**Building from source**](building.md) — `./build.sh`, format flags, the
   Electron download, the native sqlite rebuild, the mandatory launcher rename
 - [**Configuration**](configuration.md) — env vars, where state lives, the
-  uinput udev rule, clipboard deps, the GNOME Shell extension, AT-SPI
+  uinput udev rule, clipboard deps, the GNOME Shell extension, AT-SPI, the
+  native Flow Bar on Omarchy
 - [**Troubleshooting**](troubleshooting.md) — symptom-keyed fixes, reading
   `--doctor` output
 - [**Compatibility**](compatibility.md) — validated compositors / display
@@ -40,7 +41,8 @@ protocol — the contract everything else hangs off — is in
 ## Project direction
 
 - [**Decision log**](decisions.md) — ADR-format record of what we ship and why
-  (Rust helper, in-process uinput, clipboard paste, AT-SPI, the launcher rename)
+  (Rust helper, in-process uinput, clipboard paste, AT-SPI, the launcher
+  rename, the shell-drawn Flow Bar on Omarchy)
 
 ## How the port works — subsystem deep-dives
 

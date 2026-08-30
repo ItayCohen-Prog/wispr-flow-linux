@@ -277,6 +277,31 @@ step3_patch_bundle() {
     auto "Running linux-deeplink.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-deeplink.sh" "$target_bundle" \
       || warn "Deep-link patch failed -- see linux-deeplink.sh output above."
+    # Physically crop the XWayland status surface to renderer-derived visible
+    # bounds. The window remains unmapped while both the Flow Bar and its
+    # notifications are idle, so no transparent rectangle can consume input.
+    auto "Running linux-flowbar-shape.sh on $target_bundle"
+    bash "$SCRIPT_DIR/patches/linux-flowbar-shape.sh" "$target_bundle" \
+      || warn "Flow Bar crop patch failed -- see linux-flowbar-shape.sh output above."
+    # Left-click on the tray icon opens the Hub. Electron's StatusNotifierItem
+    # advertises ItemIsMenu=false, so SNI hosts (waybar, Plasma, quickshell)
+    # send Activate -> Tray 'click', which upstream never handles (macOS pops
+    # the menu natively). Reuses the "Open Wispr Flow" menu item's body.
+    auto "Running linux-tray-click.sh on $target_bundle"
+    bash "$SCRIPT_DIR/patches/linux-tray-click.sh" "$target_bundle" \
+      || warn "Tray-click patch failed -- see linux-tray-click.sh output above."
+    # The Hub is created focusable:false on every platform; on X11 Chromium
+    # turns a non-activatable window into an override-redirect (unmanaged)
+    # one: no move/resize/maximize/Alt-Tab (#36). Make it focusable on Linux.
+    auto "Running linux-hub-focusable.sh on $target_bundle"
+    bash "$SCRIPT_DIR/patches/linux-hub-focusable.sh" "$target_bundle" \
+      || warn "Hub-focusable patch failed -- see linux-hub-focusable.sh output above."
+    # Mirror the status-window IPC over a Unix socket so an omarchy-shell
+    # plugin can draw the Flow Bar as a layer-shell surface (native Wayland).
+    # Inert unless the launcher sets WISPR_NATIVE_FLOWBAR=1.
+    auto "Running linux-native-flowbar.sh on $target_bundle"
+    bash "$SCRIPT_DIR/patches/linux-native-flowbar.sh" "$target_bundle" \
+      || warn "Native Flow Bar patch failed -- see linux-native-flowbar.sh output above."
 
     # Renderer + preload patches live alongside the main bundle under .webpack/.
     local webpack_root="${target_bundle%/main/index.js}"
@@ -585,6 +610,18 @@ step7_helper_and_repack() {
   #     NOTHING in @electron/asar and silently leaves the .node packed in-archive.
   local contents="$WORK_DIR/app.asar.contents"
   if [[ -d "$contents" ]] && command -v npx >/dev/null; then
+    # Patch backups are useful while applying the suite but are not runtime
+    # assets. Do not carry stale source copies into the proprietary app archive.
+    find "$contents" -type f -name '*.orig' -delete
+    # The native Flow Bar plugin renders notifications main sends as i18n
+    # {key} objects; ship the renderer's English table next to app.asar.
+    local status_renderer="$contents/.webpack/renderer/status/index.js"
+    if [[ -f "$status_renderer" ]]; then
+      auto "Extracting English UI strings for the native Flow Bar"
+      bash "$SCRIPT_DIR/extract-flowbar-strings.sh" "$status_renderer" \
+        "$STAGE/flowbar-strings.en.json" \
+        || warn "String extraction failed -- native Flow Bar notifications will use fallback text."
+    fi
     auto "Repacking app.asar (with --unpack '*.node')..."
     if npx --yes @electron/asar pack "$contents" "$STAGE/app.asar" \
       --unpack '*.node'; then

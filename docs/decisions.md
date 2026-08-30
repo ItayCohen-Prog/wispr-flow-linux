@@ -22,6 +22,8 @@ decision date, and an owner.
 | [D-006](#d-006--rename-the-electron-launcher-to-wispr-flow) | 2026-06-04 | Accepted | Rename the Electron launcher to `wispr-flow` |
 | [D-007](#d-007--clean-room-v8-148-patch-for-better-sqlite3-multiple-ciphers) | 2026-06-04 | Accepted | Clean-room V8 14.8 patch for `better-sqlite3-multiple-ciphers` |
 | [D-008](#d-008--async-zbus-on-tokio-never-zbusblocking-for-services) | 2026-06-04 | Accepted | Async zbus on tokio, never `zbus::blocking` for services |
+| [D-009](#d-009--native-sqlite-addons-as-pinned-prebuilt-assets-not-a-build-time-rebuild) | 2026-06-06 | Accepted | Native sqlite addons as pinned prebuilt assets, not a build-time rebuild |
+| [D-010](#d-010--the-flow-bar-is-drawn-by-the-shell-on-omarchy-not-by-electron) | 2026-08-29 | Accepted | The Flow Bar is drawn by the shell on Omarchy, not by Electron |
 
 ---
 
@@ -424,3 +426,93 @@ release assets.
 
 - [learnings/electron42-v8-sqlite.md](learnings/electron42-v8-sqlite.md),
   [building.md](building.md#native-sqlite-modules-prebuilt-with-an-opt-in-local-rebuild).
+
+---
+
+## D-010 — The Flow Bar is drawn by the shell on Omarchy, not by Electron
+
+- **Status:** Accepted
+- **Decided:** 2026-08-29
+- **Owner:** @ItayCohen-Prog
+
+### Context
+
+The Flow Bar is a transparent, always-on-top Electron window ("Flow Status
+Indicator") whose renderer also owns microphone capture. Native Wayland gives
+an Electron window no say over its position or input region, so on Wayland
+sessions the launcher pins the whole app to XWayland and
+`linux-flowbar-shape.sh` crops the X11 surface to the visible bar. That works,
+but it costs the rest of the app: XWayland has one device scale for every
+monitor (a 1× and a 1.6× panel cannot both be right), and the Hub — created
+`focusable:false` upstream — becomes an X11 override-redirect window that
+Hyprland cannot tile, move, resize or focus (#36; `linux-hub-focusable.sh`
+patches that for the XWayland path).
+
+A layer-shell surface anchored to the bottom of the focused monitor is what the
+bar has been emulating all along, and omarchy-shell (Quickshell) can host one
+as a user plugin.
+
+### Decision
+
+On Omarchy the shell draws the bar and Electron runs on native Wayland.
+
+- `scripts/patches/linux-native-flowbar.sh` (main bundle) mirrors every
+  `status:*` / `notification:*` IPC message main sends to the status window
+  over `$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock` as newline-delimited JSON
+  (`{"t":channel,"p":payload}`), re-emits `status:startClicked|stopClicked|
+  cancelClicked` and `notification:callback` received from the socket on
+  `ipcMain`, and never maps the Electron status window. The block is gated on
+  `WISPR_NATIVE_FLOWBAR=1`; without it the bundle behaves as before.
+- `omarchy/plugins/wispr.flowbar/` serves the socket and renders the pill
+  (cancel, level meter, stop) in a `PanelWindow` on the focused monitor with an
+  input mask limited to the pill. Notifications go to the desktop notification
+  daemon via `notify-send`; a toast click runs the app's primary action.
+- The launcher picks `--ozone-platform=wayland` when the socket exists
+  (`WISPR_NATIVE_FLOWBAR=0|1` overrides), so the switch follows the plugin
+  being installed rather than a flag the user has to remember.
+- `scripts/extract-flowbar-strings.sh` ships the status renderer's English
+  string table as `resources/flowbar-strings.en.json` so i18n `{key}`
+  notification texts render natively.
+
+### Rationale
+
+- The proprietary app keeps everything that matters to Wispr: login, backend,
+  Hub UI and audio capture (the hidden status renderer still calls
+  `getUserMedia`). Only the on-screen overlay moves, and it moves to the
+  component that can position it.
+- Mirroring the IPC verbatim keeps the protocol a description of upstream's
+  own channels instead of a new one to maintain; the reducer in
+  `FlowBarModel.js` keys on `status:dictationStatus`, `status:setIndicatorState`,
+  `status:audioLevel` and `notification:show|clear`.
+- The shell is the socket server and the app a reconnecting client because
+  the shell outlives app restarts, and its socket doubles as the "native mode
+  available" signal the launcher checks.
+- Notifications use the daemon rather than a second layer-shell surface so
+  history, do-not-disturb and theming apply as for any other app. Omarchy's
+  daemon renders no named action buttons, only the freedesktop `default`
+  click action, so the primary action maps to a toast click.
+- Native Wayland removes the unmanaged-Hub and single-scale problems outright
+  instead of patching around them; `linux-hub-focusable.sh` and
+  `linux-flowbar-shape.sh` stay for the XWayland fallback on every other
+  compositor.
+
+### Consequences
+
+- Omarchy-only for now: the plugin depends on omarchy-shell's plugin loader,
+  `Quickshell.Hyprland.focusedMonitor` and `notify-send`. Other Wayland
+  desktops keep the XWayland path.
+- Custom-component notifications (upstream renders a bespoke React view for
+  e.g. `AudioQualityIssue`) show text only; their in-component click behaviour
+  is not reproduced.
+- The plugin directory is a symlink into the repo; omarchy-shell does not
+  hot-reload code behind a symlink, so edits need `omarchy restart shell`.
+- Startup order does not matter: the bridge reconnects every 2 s and queues
+  up to 50 lines, so the shell can restart under a running app.
+
+### References
+
+- [configuration.md](configuration.md#native-flow-bar-on-omarchy),
+  [troubleshooting.md](troubleshooting.md),
+  [`omarchy/plugins/wispr.flowbar/README.md`](../omarchy/plugins/wispr.flowbar/README.md),
+  [learnings/patching-minified-js.md](learnings/patching-minified-js.md),
+  issue #36.

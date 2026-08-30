@@ -93,8 +93,8 @@ the mandatory launcher rename in [`docs/building.md`](docs/building.md).
 ## Configuration
 
 I documented the environment variables, state locations, the uinput udev rule,
-clipboard dependencies, the GNOME extension, and AT-SPI in
-[`docs/configuration.md`](docs/configuration.md).
+clipboard dependencies, the GNOME extension, AT-SPI, and the native Omarchy
+Flow Bar plugin in [`docs/configuration.md`](docs/configuration.md).
 
 ## Troubleshooting
 

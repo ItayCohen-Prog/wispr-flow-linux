@@ -278,11 +278,12 @@ teardown() {
 	! has_electron_arg '--ozone-platform=wayland'
 }
 
-@test "build_electron_args: Wayland default (auto-detect) adds no native flags" {
-	# Default Wayland path: Electron Ozone auto-detect, no forced platform.
+@test "build_electron_args: Wayland defaults Electron to XWayland" {
+	# The physical Flow Bar surface crop is validated on XWayland.
 	is_wayland=true
 	setup_logging
 	build_electron_args deb
+	has_electron_arg '--ozone-platform=x11'
 	# shellcheck disable=SC2314
 	! has_electron_arg '--ozone-platform=wayland'
 }
@@ -293,6 +294,8 @@ teardown() {
 	setup_logging
 	build_electron_args deb
 	has_electron_arg '--ozone-platform=wayland'
+	# shellcheck disable=SC2314
+	! has_electron_arg '--ozone-platform=x11'
 	has_electron_arg '--enable-wayland-ime'
 	has_electron_arg '--wayland-text-input-version=3'
 	has_electron_arg '*WaylandWindowDecorations*'
@@ -335,15 +338,19 @@ teardown() {
 	[[ $status -eq 0 ]]
 }
 
-@test "cleanup_stale_lock: removes stale lock (dead PID)" {
+@test "cleanup_stale_lock: removes stale Chromium singleton set (dead PID)" {
 	local config_dir
 	config_dir="$(wispr_config_dir)"
 	mkdir -p "$config_dir"
 	# PID 99999999 almost certainly doesn't exist.
 	ln -s "myhost-99999999" "$config_dir/SingletonLock"
+	ln -s "123456789" "$config_dir/SingletonCookie"
+	ln -s "$TEST_TMP/dead/SingletonSocket" "$config_dir/SingletonSocket"
 	setup_logging
 	cleanup_stale_lock
 	[[ ! -L "$config_dir/SingletonLock" ]]
+	[[ ! -L "$config_dir/SingletonCookie" ]]
+	[[ ! -L "$config_dir/SingletonSocket" ]]
 }
 
 @test "cleanup_stale_lock: keeps lock for running process" {
@@ -377,4 +384,62 @@ teardown() {
 	run cleanup_stale_lock
 	[[ $status -eq 0 ]]
 	[[ -f "$config_dir/SingletonLock" ]]
+}
+
+# =============================================================================
+# native Flow Bar auto-detection
+# =============================================================================
+
+make_flowbar_socket() {
+	mkdir -p "$XDG_RUNTIME_DIR/wispr-flow"
+	python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' \
+		"$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock"
+}
+
+@test "build_electron_args: native Flow Bar socket switches to Wayland" {
+	setup_logging
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_RUNTIME_DIR="$TEST_TMP/rt"
+	unset WISPR_NATIVE_FLOWBAR
+	make_flowbar_socket
+	detect_display_backend
+	build_electron_args appimage
+	[[ " ${electron_args[*]} " == *' --ozone-platform=wayland '* ]]
+	[[ "$WISPR_NATIVE_FLOWBAR" == '1' ]]
+	[[ "$WISPR_FLOWBAR_SOCKET" == "$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock" ]]
+	grep -q 'Native Flow Bar socket present' "$log_file"
+}
+
+@test "build_electron_args: WISPR_NATIVE_FLOWBAR=0 keeps XWayland despite socket" {
+	setup_logging
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_RUNTIME_DIR="$TEST_TMP/rt"
+	make_flowbar_socket
+	WISPR_NATIVE_FLOWBAR='0'
+	detect_display_backend
+	build_electron_args appimage
+	[[ " ${electron_args[*]} " == *' --ozone-platform=x11 '* ]]
+	[[ -z "${WISPR_FLOWBAR_SOCKET:-}" ]]
+}
+
+@test "build_electron_args: WISPR_NATIVE_FLOWBAR=1 forces Wayland without a socket" {
+	setup_logging
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_RUNTIME_DIR="$TEST_TMP/rt"
+	WISPR_NATIVE_FLOWBAR='1'
+	detect_display_backend
+	build_electron_args appimage
+	[[ " ${electron_args[*]} " == *' --ozone-platform=wayland '* ]]
+	[[ "$WISPR_FLOWBAR_SOCKET" == "$TEST_TMP/rt/wispr-flow/flowbar.sock" ]]
+}
+
+@test "build_electron_args: no socket keeps XWayland" {
+	setup_logging
+	WAYLAND_DISPLAY='wayland-0'
+	XDG_RUNTIME_DIR="$TEST_TMP/rt"
+	unset WISPR_NATIVE_FLOWBAR
+	detect_display_backend
+	build_electron_args appimage
+	[[ " ${electron_args[*]} " == *' --ozone-platform=x11 '* ]]
+	[[ -z "${WISPR_NATIVE_FLOWBAR:-}" ]]
 }

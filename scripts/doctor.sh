@@ -63,7 +63,7 @@ _doctor_check_display() {
 		if [[ ${WISPR_USE_WAYLAND:-} == '1' ]]; then
 			_info 'Mode: native Wayland forced (WISPR_USE_WAYLAND=1)'
 		else
-			_info 'Mode: Electron Ozone auto-detect (default)'
+			_info 'Mode: XWayland UI backend (default; Flow Bar click-through enabled)'
 		fi
 	elif [[ -n ${DISPLAY:-} ]]; then
 		_pass "Display server: X11 (DISPLAY=$DISPLAY)"

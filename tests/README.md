@@ -18,7 +18,9 @@ bats tests/*.bats
 | `launcher-common.bats` | `scripts/launcher-common.sh`: logging paths, `check_display`, `detect_display_backend`, `build_electron_args` (sandbox/GPU/Wayland flag selection), `setup_electron_env`, `cleanup_stale_lock`, `wispr_config_dir`. |
 | `doctor.bats` | `scripts/doctor.sh`: the `_pass`/`_fail`/`_warn` counter, display/clipboard/helper/singleton-lock checks (driven with stubbed tool presence and temp fixtures), and `run_doctor` exit status. |
 | `verify-patches.bats` | `scripts/verify-patches.sh`: PASS when every Linux patch marker is present in a fixture app.asar, exit 1 when any one is omitted (omit-one matrix), exit 2 on bad usage. |
-| `linux-patches.bats` | `scripts/patches/linux-{renderer-chrome,window-frame,renderer-treat-as-windows,deeplink}.sh`: each patch applied to a hermetic minified-JS fixture carrying its anchor — asserts the transformation + marker, leaves unrelated sites alone, `node --check`s the result, is idempotent (second run is byte-identical), and bails non-zero when the anchor is absent. |
+| `linux-patches.bats` | The renderer, window-frame, Windows-behavior, deep-link, cropped Flow Bar, tray-click, Hub-focusable, and native Flow Bar patches in `scripts/patches/`: each patch is applied to a hermetic minified-JS fixture carrying its anchor. Tests assert the transformation and marker, preserve unrelated sites, parse both the outer bundle and injected renderer program, check idempotence, and require a non-zero exit when an anchor is absent. |
+| `flowbar-model.bats` | `omarchy/plugins/wispr.flowbar/FlowBarModel.js`, driven with node: the status → pill-state reducer, level smoothing, i18n `{key}` / `custom` notification texts, and the `notification:callback` payload. |
+| `extract-flowbar-strings.bats` | `scripts/extract-flowbar-strings.sh`: decodes the status renderer's English string table into JSON, fails on a bundle without the table, exit 2 on bad usage. |
 
 Don't have bats yet? Grab it: `sudo dnf install bats` / `sudo apt install bats`.
 

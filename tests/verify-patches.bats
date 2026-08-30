@@ -6,7 +6,7 @@
 # (the .asar stores the JS bundle as concatenated plaintext, so a byte-grep
 # finds the markers without unpacking).
 #
-# verify-patches.sh greps a fixed set of markers (8 fixed strings + 1 Perl
+# verify-patches.sh greps a fixed set of markers (12 fixed strings + 1 Perl
 # regex). We build a tiny fixture carrying those exact marker strings (PASS)
 # and per-marker fixtures that omit one (FAIL).
 #
@@ -37,6 +37,10 @@ declare -gA MARKER_SAMPLES=(
 	[windowframe]='"win32"===process.platform||"linux"===process.platform/*WISPR_LINUX_FRAMELESS*/&&Object.assign(t,{titleBarStyle:"hidden"});'
 	[treataswindows]='const x=((y?.platform?.isWindows??!1)||"linux"===y?.platform?.os)/*WISPR_LINUX_RENDERER_ISWIN*/;'
 	[deeplink]='if(f.H8||"linux"===process.platform){/*WISPR_LINUX_DEEPLINK*/const e=process.argv.find(x=>x.startsWith("wispr-flow:"));}'
+	[flowbarcrop]='window.setBounds(bounds)/*WISPR_LINUX_FLOWBAR_CROPPED_SURFACE*/;'
+	[trayclick]='"linux"===process.platform&&n.on("click",()=>{/*WISPR_LINUX_TRAY_CLICK*/openHub()});'
+	[hubfocusable]='focusable:/*WISPR_LINUX_HUB_FOCUSABLE*/"linux"===process.platform};'
+	[nativeflowbar]='/*WISPR_LINUX_NATIVE_FLOWBAR*/if("1"===process.env.WISPR_NATIVE_FLOWBAR){}'
 )
 
 # Write a fixture app.asar-like file containing every marker, except the one
@@ -149,6 +153,38 @@ write_fixture() {
 @test "verify: exits 1 when the deeplink marker is missing" {
 	local fixture
 	fixture="$(write_fixture deeplink)"
+	run "$VERIFY_SH" "$fixture"
+	[[ "$status" -eq 1 ]]
+	[[ "$output" == *'MISSING'* ]]
+}
+
+@test "verify: exits 1 when the Flow Bar cropped-surface marker is missing" {
+	local fixture
+	fixture="$(write_fixture flowbarcrop)"
+	run "$VERIFY_SH" "$fixture"
+	[[ "$status" -eq 1 ]]
+	[[ "$output" == *'MISSING'* ]]
+}
+
+@test "verify: exits 1 when the tray-click marker is missing" {
+	local fixture
+	fixture="$(write_fixture trayclick)"
+	run "$VERIFY_SH" "$fixture"
+	[[ "$status" -eq 1 ]]
+	[[ "$output" == *'MISSING'* ]]
+}
+
+@test "verify: exits 1 when the Hub-focusable marker is missing" {
+	local fixture
+	fixture="$(write_fixture hubfocusable)"
+	run "$VERIFY_SH" "$fixture"
+	[[ "$status" -eq 1 ]]
+	[[ "$output" == *'MISSING'* ]]
+}
+
+@test "verify: exits 1 when the native Flow Bar marker is missing" {
+	local fixture
+	fixture="$(write_fixture nativeflowbar)"
 	run "$VERIFY_SH" "$fixture"
 	[[ "$status" -eq 1 ]]
 	[[ "$output" == *'MISSING'* ]]

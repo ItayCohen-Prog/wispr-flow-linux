@@ -10,7 +10,8 @@
 # report for the kept-vs-dropped rationale.
 #
 # Env var convention: WISPR_* (not CLAUDE_*). Supported overrides:
-#   WISPR_USE_WAYLAND=1   force native Wayland (Electron Ozone)
+#   WISPR_USE_WAYLAND=1   force native Wayland (diagnostic override; the Flow
+#                         Bar's transparent window cannot pass clicks there)
 #   WISPR_DISABLE_GPU=1   disable GPU / software rasterizer (blank-window
 #                         workaround on broken drivers / remote sessions)
 #
@@ -83,12 +84,14 @@ check_display() {
 # Detect display backend (Wayland vs X11).
 # Sets: is_wayland
 #
-# Electron 42 auto-detects Wayland/X11 via Ozone, so unlike the Claude
-# reference we do NOT force XWayland: Wispr Flow's keystroke injection
-# uses an in-process /dev/uinput virtual keyboard (not X11 XTEST global
-# hotkeys), so native Wayland is the validated default. WISPR_USE_WAYLAND
-# is retained as an explicit override that maps to native Ozone Wayland
-# flags in build_electron_args.
+# Electron 42 cannot apply partial BrowserWindow mouse-input regions on native
+# Wayland. Wispr Flow's status renderer stays logically 440x320, but the Linux
+# patch maps only a tightly cropped OS surface around the visible Flow Bar or
+# notification and unmaps it while idle. build_electron_args pins that UI to
+# XWayland because Electron can reliably move and resize the cropped surface
+# there. The helper still uses the session's /dev/uinput, /dev/input, and
+# wl-clipboard paths; it does not depend on Electron's display backend.
+# WISPR_USE_WAYLAND remains a diagnostic override for native Ozone Wayland.
 detect_display_backend() {
 	is_wayland=false
 	[[ -n ${WAYLAND_DISPLAY:-} ]] && is_wayland=true
@@ -97,6 +100,20 @@ detect_display_backend() {
 	# `&&` above leaves $? at 1 on X11/no-Wayland, which would abort any
 	# caller running under `set -e` (or break `detect_display_backend && ...`).
 	return 0
+}
+
+# Native Flow Bar: when an omarchy-shell (Quickshell) plugin serves the Flow
+# Bar over a Unix socket, Electron can run on native Wayland (per-monitor
+# scaling, managed Hub) with its own status window never mapped. Enabled when
+# WISPR_NATIVE_FLOWBAR=1, disabled when =0, otherwise auto: on iff the socket
+# exists. Sets: native_flowbar_socket.
+native_flowbar_enabled() {
+	native_flowbar_socket="${XDG_RUNTIME_DIR:-/tmp}/wispr-flow/flowbar.sock"
+	case "${WISPR_NATIVE_FLOWBAR:-}" in
+		1) return 0 ;;
+		0) return 1 ;;
+	esac
+	[[ -S $native_flowbar_socket ]]
 }
 
 # Build the Electron arguments array based on package type and backend.
@@ -148,7 +165,14 @@ build_electron_args() {
 	fi
 
 	# Wayland session.
-	if [[ ${WISPR_USE_WAYLAND:-} == '1' ]]; then
+	local native_flowbar=false
+	if native_flowbar_enabled; then
+		native_flowbar=true
+		log_message "Native Flow Bar socket present ($native_flowbar_socket) - native Wayland backend"
+		export WISPR_NATIVE_FLOWBAR=1
+		export WISPR_FLOWBAR_SOCKET="$native_flowbar_socket"
+	fi
+	if [[ ${WISPR_USE_WAYLAND:-} == '1' || $native_flowbar == true ]]; then
 		# Explicit native-Wayland opt-in: pin the Ozone Wayland platform
 		# and enable the Wayland IME path.
 		log_message 'WISPR_USE_WAYLAND=1 - native Wayland (Ozone) backend'
@@ -160,10 +184,11 @@ build_electron_args() {
 		# GTK from connecting to the compositor (blurry/failed HiDPI).
 		export GDK_BACKEND=wayland
 	else
-		# Default: let Electron 42 auto-detect (Ozone picks Wayland when
-		# WAYLAND_DISPLAY is set). The uinput injection path does not
-		# depend on the toolkit backend, so no override is needed.
-		log_message 'Wayland session - Electron Ozone auto-detect'
+		# The Flow Bar patch physically crops and unmaps the status surface.
+		# XWayland supports the required deterministic move/resize behavior;
+		# native Wayland would keep the original click-blocking rectangle.
+		log_message 'Wayland session - XWayland backend for cropped Flow Bar'
+		electron_args+=('--ozone-platform=x11')
 	fi
 }
 
@@ -200,8 +225,16 @@ cleanup_stale_lock() {
 		return 0
 	fi
 
-	rm -f "$lock_file"
-	log_message "Removed stale SingletonLock (PID $lock_pid no longer running)"
+	# Chromium treats Lock, Cookie, and Socket as one singleton set. Removing
+	# only the lock leaves the stale socket discoverable, and Electron exits with
+	# "app is already running" even though the recorded PID is dead. Remove only
+	# symlinks (Chromium's normal representation), preserving any unexpected
+	# regular user files.
+	local singleton
+	for singleton in SingletonLock SingletonCookie SingletonSocket; do
+		[[ -L $config_dir/$singleton ]] && rm -f "$config_dir/$singleton"
+	done
+	log_message "Removed stale Chromium singleton set (PID $lock_pid no longer running)"
 }
 
 #===============================================================================

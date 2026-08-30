@@ -142,6 +142,12 @@ command() {
 	[[ $_doctor_failures -eq 0 ]]
 }
 
+@test "_doctor_check_display: reports the default XWayland UI backend" {
+	WAYLAND_DISPLAY='wayland-0'
+	run _doctor_check_display
+	[[ $output == *"XWayland UI backend (default; Flow Bar click-through enabled)"* ]]
+}
+
 @test "_doctor_check_display: passes with DISPLAY set (X11)" {
 	DISPLAY=':0'
 	_doctor_failures=0

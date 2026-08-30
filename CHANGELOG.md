@@ -8,6 +8,35 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
 
 ## [Unreleased]
 
+### Added
+
+- Native Flow Bar for Omarchy: an omarchy-shell (Quickshell) plugin
+  (`omarchy/plugins/wispr.flowbar`) draws the dictation pill as a layer-shell
+  surface on the focused monitor and routes the app's notifications to the
+  desktop notification daemon (click = primary action), fed by a new main-bundle
+  patch (`linux-native-flowbar.sh`) that mirrors the status-window IPC over
+  `$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock` and accepts the bar's clicks
+  back. The launcher switches Electron to native Wayland when the socket
+  exists (`WISPR_NATIVE_FLOWBAR=0|1` overrides), so the Hub is a managed,
+  per-monitor-scaled window and no XWayland surface is involved. The build
+  ships the renderer's English string table (`flowbar-strings.en.json`) for
+  i18n notification texts. Install with
+  `scripts/omarchy/install-flowbar-plugin.sh`.
+
+### Fixed
+
+- Left-clicking the tray icon did nothing on StatusNotifierItem hosts that
+  send `Activate` (waybar, KDE Plasma, omarchy-shell/quickshell): Electron
+  advertises `ItemIsMenu=false` and upstream registers no tray `click` handler
+  (macOS pops the menu natively). `linux-tray-click.sh` now adds a Linux-only
+  handler that runs the "Open Wispr Flow" menu item's body. Right-click →
+  "Open Wispr Flow" was the only way to reach the Hub before.
+- The Hub was an X11 override-redirect (unmanaged) window: it could not be
+  moved, resized, maximized, tiled or Alt-Tabbed to. Upstream creates it with
+  `focusable:false` on every platform and Chromium's X11 backend turns a
+  non-activatable top-level into an override-redirect window.
+  `linux-hub-focusable.sh` makes the Hub focusable on Linux only. (#36)
+
 ## [v1.0.3] - 2026-06-11
 
 ### Fixed
