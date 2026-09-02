@@ -41,8 +41,16 @@ WEBPACK_MAIN="$EXTRACT_DIR/app/.webpack/main/index.js"   # unpacked main bundle 
 # HELPER_BIN is unset and a release build of the sibling helper exists, use it
 # so a `cargo build --release` there is all a local build needs.
 SIBLING_HELPER="$PROJECT_ROOT/../helper/target/release/wispr-flow-linux-helper"
-if [[ -z ${HELPER_BIN:-} && -x $SIBLING_HELPER ]]; then
-  HELPER_BIN="$SIBLING_HELPER"
+if [[ -z ${HELPER_BIN:-} ]]; then
+  if [[ -x $SIBLING_HELPER ]]; then
+    HELPER_BIN="$SIBLING_HELPER"
+  elif [[ -f "$PROJECT_ROOT/../helper/Cargo.toml" ]]; then
+    # The helper source is right here but not built. Refuse to fall back to the
+    # upstream prebuilt release, which lacks this repo's fixes.
+    printf 'ERROR: helper not built. Run `cargo build --release` in %s first.\n' \
+      "$(cd "$PROJECT_ROOT/../helper" && pwd)" >&2
+    exit 1
+  fi
 fi
 HELPER_BIN_PRESET="${HELPER_BIN:+1}"
 HELPER_BIN="${HELPER_BIN:-$PROJECT_ROOT/helper-bin/wispr-flow-linux-helper}"
