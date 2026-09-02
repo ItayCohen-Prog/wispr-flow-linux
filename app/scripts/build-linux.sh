@@ -37,6 +37,13 @@ WEBPACK_MAIN="$EXTRACT_DIR/app/.webpack/main/index.js"   # unpacked main bundle 
 # auto-fetches the pinned release into the local helper-bin/ drop spot
 # (resolve_helper_bin). Track whether the caller supplied a value so a bad
 # explicit override is reported instead of silently fetched over.
+# In this monorepo the helper source sits next to the app (../helper). When
+# HELPER_BIN is unset and a release build of the sibling helper exists, use it
+# so a `cargo build --release` there is all a local build needs.
+SIBLING_HELPER="$PROJECT_ROOT/../helper/target/release/wispr-flow-linux-helper"
+if [[ -z ${HELPER_BIN:-} && -x $SIBLING_HELPER ]]; then
+  HELPER_BIN="$SIBLING_HELPER"
+fi
 HELPER_BIN_PRESET="${HELPER_BIN:+1}"
 HELPER_BIN="${HELPER_BIN:-$PROJECT_ROOT/helper-bin/wispr-flow-linux-helper}"
 

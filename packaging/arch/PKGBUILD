@@ -1,0 +1,47 @@
+# Installs a locally built wispr-flow AppImage under /opt and exposes it as
+# `wispr-flow`. Copy the AppImage next to this file, set _appimage and pkgver,
+# run `updpkgsums`, then `makepkg -si`. See ../../README.md.
+pkgname=wispr-flow-appimage
+pkgver=1.0.3+wispr1.6.7.local1
+pkgrel=1
+pkgdesc="Wispr Flow voice dictation for Linux (local AppImage build)"
+arch=('x86_64')
+url="https://github.com/ItayCohen-Prog/wispr-flow-linux"
+license=('LicenseRef-proprietary')
+depends=('gtk3' 'nss' 'alsa-lib')
+optdepends=('wl-clipboard: clipboard paste injection on Wayland')
+provides=('wispr-flow')
+conflicts=('wispr-flow')
+options=('!strip' '!debug')
+
+_appimage='wispr-flow-1.6.7-x86_64.AppImage'
+source=("${_appimage}")
+sha256sums=('SKIP')
+noextract=("${_appimage}")
+
+package() {
+	cd "${srcdir}"
+	chmod +x "${_appimage}"
+	"./${_appimage}" --appimage-extract >/dev/null
+
+	install -dm755 "${pkgdir}/opt/${pkgname}"
+	cp -a --no-preserve=ownership squashfs-root/. \
+		"${pkgdir}/opt/${pkgname}/"
+	chmod 4755 \
+		"${pkgdir}/opt/${pkgname}/usr/lib/wispr-flow/chrome-sandbox"
+
+	install -dm755 "${pkgdir}/usr/bin"
+	ln -s "/opt/${pkgname}/AppRun" "${pkgdir}/usr/bin/wispr-flow"
+
+	install -Dm644 squashfs-root/ai.wisprflow.WisprFlow.desktop \
+		"${pkgdir}/usr/share/applications/${pkgname}.desktop"
+	sed -i \
+		-e 's|^Exec=.*|Exec=wispr-flow %U|' \
+		-e 's|^Icon=.*|Icon=wispr-flow|' \
+		"${pkgdir}/usr/share/applications/${pkgname}.desktop"
+	printf '%s\n' 'MimeType=x-scheme-handler/wispr-flow;' >> \
+		"${pkgdir}/usr/share/applications/${pkgname}.desktop"
+
+	install -Dm644 squashfs-root/ai.wisprflow.WisprFlow.png \
+		"${pkgdir}/usr/share/icons/hicolor/512x512/apps/wispr-flow.png"
+}
