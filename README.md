@@ -41,10 +41,15 @@ Both folders keep their full upstream history (imported with `git subtree`).
 ### 1. Build dependencies
 
 ```bash
-sudo pacman -S --needed p7zip icoutils imagemagick rsync nodejs npm python3 curl rustup
+sudo pacman -S --needed 7zip icoutils imagemagick rsync nodejs npm python3 curl rustup
 rustup default stable
-yay -S appimagetool-bin    # or drop appimagetool-x86_64.AppImage in app/build-linux/appimage/
+curl -fsSL -o ~/.local/bin/appimagetool \
+  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+chmod +x ~/.local/bin/appimagetool
 ```
+
+Put appimagetool on your PATH as above, not inside `app/build-linux/`. The
+build wipes that directory on every run.
 
 ### 2. Build the helper
 
@@ -59,31 +64,41 @@ build picks it up from there automatically.
 
 ### 3. Build the app
 
+The build is pinned to Wispr Flow 1.6.7, the version the Linux patches were
+verified against. Wispr's "latest" link now serves a small web installer with
+no payload in it, which the build cannot use, so download the versioned 1.6.7
+installer yourself and pass it in:
+
 ```bash
+curl -fL -o ~/Downloads/"Wispr Flow Setup-v1.6.7.exe" \
+  "https://dl.wisprflow.com/wispr-flow/win32/x64/Wispr%20Flow%20Setup-v1.6.7.exe"
 cd ../app
-./build.sh --build appimage
+./build.sh --build appimage --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
 ```
 
-This downloads the official Wispr Flow Windows installer, the Linux Electron
-runtime, rebuilds the native sqlite module, applies the patches under
-`app/scripts/patches/`, and writes an AppImage into `app/build-linux/appimage/`.
-The repo never bundles the proprietary app.
+This extracts the app from the installer, downloads the Linux Electron runtime,
+rebuilds the native sqlite module, applies the patches under
+`app/scripts/patches/`, and writes `app/build-linux/appimage/wispr-flow-1.6.7-x86_64.AppImage`.
+The repo never bundles the proprietary app. Note that `app/build-linux/` is
+wiped at the start of every build, so copy anything you want to keep out of it.
 
 ### 4. Install it as a package
 
 ```bash
-cp packaging/arch/PKGBUILD app/build-linux/appimage/
-cd app/build-linux/appimage
-# edit PKGBUILD: set _appimage to the file you just built and bump pkgver
+cp build-linux/appimage/wispr-flow-1.6.7-x86_64.AppImage ../packaging/arch/
+cd ../packaging/arch
+# PKGBUILD already names that file; bump pkgver if you rebuild later
 updpkgsums
 makepkg -si
 ```
 
 That puts the app under `/opt/wispr-flow-appimage` with a `wispr-flow`
-launcher and desktop entry. Once, after the first install, grant input access:
+launcher and desktop entry. The package file stays in `packaging/arch/` as a
+rollback for the next rebuild. Once, after the first install, grant input
+access:
 
 ```bash
-./wispr-flow-*-x86_64.AppImage --install-udev-rules
+./wispr-flow-1.6.7-x86_64.AppImage --install-udev-rules
 ```
 
 Then log out and back in so the `/dev/uinput` and `/dev/input` permissions
@@ -92,7 +107,7 @@ apply.
 ### 5. Enable the native Flow Bar
 
 ```bash
-cd ../../..   # back to app/
+cd ../../app
 scripts/omarchy/install-flowbar-plugin.sh
 omarchy restart shell
 ```
@@ -114,11 +129,12 @@ when the plugin's socket exists. Push-to-talk is Ctrl+Space by default.
 
 ```bash
 cd helper && cargo build --release && cd ..
-cd app && ./build.sh --build appimage
+cd app && ./build.sh --build appimage --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
 ```
 
-then repeat step 4. The previous package stays in `app/build-linux/` as a
-rollback.
+then repeat step 4 with a higher `pkgver`. Wispr has shipped newer versions
+since 1.6.7 (their Squirrel feed lists 1.6.721), but upstream has not moved the
+pin yet, and the patches are only verified against 1.6.7.
 
 ## Pulling upstream changes
 

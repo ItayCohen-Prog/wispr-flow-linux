@@ -16,7 +16,7 @@ options=('!strip' '!debug')
 
 _appimage='wispr-flow-1.6.7-x86_64.AppImage'
 source=("${_appimage}")
-sha256sums=('SKIP')
+sha256sums=('8b3515f1abe63cf05fa40082c4f6e81b63a8b77e2dbc44276ebfecbca5102560')
 noextract=("${_appimage}")
 
 package() {
