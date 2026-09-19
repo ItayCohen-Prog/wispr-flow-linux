@@ -20,6 +20,8 @@ TestCase {
     tryCompare(capsule, "processing", true)
     wait(200); var oldPhase = capsule.phase; wait(100)
     verify(capsule.phase !== oldPhase)
+    var bar = findChild(capsule, "levelBar0"); var oldHeight = bar.height; wait(150)
+    verify(bar.height !== oldHeight)
     capsule.mode = "hidden"; wait(300); oldPhase = capsule.phase; wait(100)
     compare(capsule.phase, oldPhase)
   }

@@ -50,6 +50,8 @@ on Hyprland internals and can break across compositor updates. Qt's
 [ShaderEffect](https://doc.qt.io/qt-6/qml-qtquick-shadereffect.html) alone cannot
 sample and refract other applications behind a Wayland surface.
 
+See the [measured validation and its limits](glass-validation.md).
+
 ## Preview and checks
 
 Run the preview in a disposable Hyprland session; it binds a real socket and

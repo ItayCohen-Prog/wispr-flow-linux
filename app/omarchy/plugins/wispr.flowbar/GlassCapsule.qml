@@ -55,10 +55,11 @@ Rectangle {
   HoverHandler { id: hover }
 
   // Only processing has a clock. Listening is driven by real incoming audio.
-  NumberAnimation on phase {
-    from: 0; to: Math.PI * 2; duration: 1600
-    loops: Animation.Infinite
+  Timer {
+    interval: 33
+    repeat: true
     running: capsule.processing
+    onTriggered: capsule.phase = (capsule.phase + Math.PI * 2 * 33 / 1600) % (Math.PI * 2)
   }
 
   Item {
@@ -78,13 +79,14 @@ Rectangle {
         model: 11
         Rectangle {
           required property int index
+          objectName: "levelBar" + index
           readonly property real weight: 0.45 + 0.55 * Math.cos((index - 5) * 0.25)
           width: 3; radius: 1.5
           height: capsule.mode === "listening" ? 4 + 21 * capsule.level * weight :
                   capsule.processing ? 5 + 10 * (0.5 + 0.5 * Math.sin(capsule.phase - index * 0.42)) : 5
           anchors.verticalCenter: parent.verticalCenter
           color: capsule.mode === "error" ? "#efc49f" : "#e9f6fa"
-          Behavior on height { NumberAnimation { duration: capsule.reducedMotion ? 0 : 80; easing.type: Easing.OutCubic } }
+          Behavior on height { enabled: capsule.mode === "listening"; NumberAnimation { duration: capsule.reducedMotion ? 0 : 80; easing.type: Easing.OutCubic } }
         }
       }
     }
