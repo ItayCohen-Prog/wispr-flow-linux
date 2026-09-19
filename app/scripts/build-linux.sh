@@ -47,7 +47,7 @@ if [[ -z ${HELPER_BIN:-} ]]; then
   elif [[ -f "$PROJECT_ROOT/../helper/Cargo.toml" ]]; then
     # The helper source is right here but not built. Refuse to fall back to the
     # upstream prebuilt release, which lacks this repo's fixes.
-    printf 'ERROR: helper not built. Run `cargo build --release` in %s first.\n' \
+    printf 'ERROR: helper not built. Run cargo build --release in %s first.\n' \
       "$(cd "$PROJECT_ROOT/../helper" && pwd)" >&2
     exit 1
   fi
@@ -311,9 +311,12 @@ step3_patch_bundle() {
     auto "Running linux-hub-focusable.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-hub-focusable.sh" "$target_bundle" \
       || warn "Hub-focusable patch failed -- see linux-hub-focusable.sh output above."
-    # Mirror the status-window IPC over a Unix socket so an omarchy-shell
-    # plugin can draw the Flow Bar as a layer-shell surface (native Wayland).
-    # Inert unless the launcher sets WISPR_NATIVE_FLOWBAR=1.
+    # Keep ordinary launcher opens in the background after onboarding.
+    auto "Running linux-background-launch.sh on $target_bundle"
+    bash "$SCRIPT_DIR/patches/linux-background-launch.sh" "$target_bundle" \
+      || { warn "Background launch patch failed."; exit 1; }
+
+    # Mirror status IPC to the native layer-shell capsule when enabled.
     auto "Running linux-native-flowbar.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-native-flowbar.sh" "$target_bundle" \
       || warn "Native Flow Bar patch failed -- see linux-native-flowbar.sh output above."

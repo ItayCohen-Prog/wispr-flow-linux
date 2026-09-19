@@ -2,7 +2,7 @@
 # `wispr-flow`. Copy the AppImage next to this file, set _appimage and pkgver,
 # run `updpkgsums`, then `makepkg -si`. See ../../README.md.
 pkgname=wispr-flow-appimage
-pkgver=1.0.3+wispr1.6.7.local1
+pkgver=1.0.3+wispr1.6.7.glass1
 pkgrel=1
 pkgdesc="Wispr Flow voice dictation for Linux (local AppImage build)"
 arch=('x86_64')
@@ -14,9 +14,9 @@ provides=('wispr-flow')
 conflicts=('wispr-flow')
 options=('!strip' '!debug')
 
-_appimage='wispr-flow-1.6.7-x86_64.AppImage'
+_appimage='wispr-flow-1.6.7-glass1-x86_64.AppImage'
 source=("${_appimage}")
-sha256sums=('8b3515f1abe63cf05fa40082c4f6e81b63a8b77e2dbc44276ebfecbca5102560')
+sha256sums=('b834ef295b0626a33d7b8d2b70171104d12d62438f796a048cb158a3f4755a47')
 noextract=("${_appimage}")
 
 package() {
@@ -36,10 +36,12 @@ package() {
 	install -Dm644 squashfs-root/ai.wisprflow.WisprFlow.desktop \
 		"${pkgdir}/usr/share/applications/${pkgname}.desktop"
 	sed -i \
-		-e 's|^Exec=.*|Exec=wispr-flow %U|' \
+		-e 's|^Exec=.*|Exec=wispr-flow --background %U|' \
 		-e 's|^Icon=.*|Icon=wispr-flow|' \
 		"${pkgdir}/usr/share/applications/${pkgname}.desktop"
-	printf '%s\n' 'MimeType=x-scheme-handler/wispr-flow;' >> \
+	printf '%s\n' 'MimeType=x-scheme-handler/wispr-flow;' \
+		'Actions=OpenHub;' '' '[Desktop Action OpenHub]' \
+		'Name=Open Wispr Flow' 'Exec=wispr-flow --show-hub' >> \
 		"${pkgdir}/usr/share/applications/${pkgname}.desktop"
 
 	install -Dm644 squashfs-root/ai.wisprflow.WisprFlow.png \

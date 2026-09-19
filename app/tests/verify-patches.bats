@@ -40,6 +40,7 @@ declare -gA MARKER_SAMPLES=(
 	[flowbarcrop]='window.setBounds(bounds)/*WISPR_LINUX_FLOWBAR_CROPPED_SURFACE*/;'
 	[trayclick]='"linux"===process.platform&&n.on("click",()=>{/*WISPR_LINUX_TRAY_CLICK*/openHub()});'
 	[hubfocusable]='focusable:/*WISPR_LINUX_HUB_FOCUSABLE*/"linux"===process.platform};'
+	[backgroundlaunch]='/*WISPR_LINUX_BACKGROUND_LAUNCH*/'
 	[nativeflowbar]='/*WISPR_LINUX_NATIVE_FLOWBAR*/if("1"===process.env.WISPR_NATIVE_FLOWBAR){}'
 )
 

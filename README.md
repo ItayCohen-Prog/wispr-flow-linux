@@ -115,6 +115,11 @@ omarchy restart shell
 The plugin directory is a symlink into this repo, so keep the clone where it is.
 After editing plugin code run `omarchy restart shell` again.
 
+The native capsule now includes glass highlights, spring transitions and actionable
+errors. Apps launches run in the background after onboarding; use
+`wispr-flow --show-hub` to open the main window. See the
+[material options and preview checks](app/docs/glass-capsule.md).
+
 ### 6. Check
 
 ```bash

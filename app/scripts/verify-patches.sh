@@ -55,6 +55,7 @@ MARKERS=(
   "flowbar: cropped visible surface and idle unmapping|F|WISPR_LINUX_FLOWBAR_CROPPED_SURFACE"
   "tray-click: linux tray left-click opens the Hub|F|WISPR_LINUX_TRAY_CLICK"
   "hub-focusable: linux Hub window is focusable (managed)|F|WISPR_LINUX_HUB_FOCUSABLE"
+  "background-launch: explicit quiet startup|F|WISPR_LINUX_BACKGROUND_LAUNCH"
   "native-flowbar: linux status IPC mirrored to shell socket|F|WISPR_LINUX_NATIVE_FLOWBAR"
 )
 

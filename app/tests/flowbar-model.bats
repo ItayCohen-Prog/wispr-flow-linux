@@ -51,7 +51,7 @@ if(s.mode!=="listening")process.exit(4);
 	run_model '
 const M=require(process.argv[1]);let s=M.initial();
 s=M.reduce(s,{t:"notification:show",p:{title:"T",body:"B",timeout:10}});
-if(M.visible(s)||s.notification.title!=="T"||s.notification.timeout!==10)process.exit(1);
+if(!M.visible(s)||s.notification.title!=="T"||s.notification.timeout!==10)process.exit(1);
 if(s.mode!=="hidden")process.exit(2);
 s=M.reduce(s,{t:"notification:clear",p:null});
 if(M.visible(s)||s.notification!==null)process.exit(3);

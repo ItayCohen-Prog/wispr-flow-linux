@@ -31,6 +31,9 @@ protocol — the contract everything else hangs off — is in
 - [**Compatibility**](compatibility.md) — validated compositors / display
   servers and the access requirements per backend
 
+- [**Glass capsule**](glass-capsule.md) — background launch, material options,
+  reduced motion and isolated preview tests
+
 ## Releasing & distribution
 
 - [**Releasing**](../RELEASING.md) — the tag scheme, the one-time prerequisites

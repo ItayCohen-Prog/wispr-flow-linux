@@ -10,10 +10,17 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
 
 ### Added
 
+- Glass capsule with interruptible spring transitions, bounded actionable
+  messages, optional compositor blur and reduced motion. Hidden and inactive
+  monitor processing indicators stop animating.
+- Background launch from the Arch desktop entry after onboarding, plus an
+  explicit Hub action. Repeated background opens preserve quit and deep links.
+- Native preview, lifecycle integration checks and scoped CPU/RSS sampling.
+
 - Native Flow Bar for Omarchy: an omarchy-shell (Quickshell) plugin
   (`omarchy/plugins/wispr.flowbar`) draws the dictation pill as a layer-shell
-  surface on the focused monitor and routes the app's notifications to the
-  desktop notification daemon (click = primary action), fed by a new main-bundle
+  surface on the focused monitor and renders actionable notifications in the
+  capsule, fed by a new main-bundle
   patch (`linux-native-flowbar.sh`) that mirrors the status-window IPC over
   `$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock` and accepts the bar's clicks
   back. The launcher switches Electron to native Wayland when the socket
@@ -22,6 +29,11 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
   ships the renderer's English string table (`flowbar-strings.en.json`) for
   i18n notification texts. Install with
   `scripts/omarchy/install-flowbar-plugin.sh`.
+
+### Fixed
+
+- Schedule only one native Flow Bar reconnect after a socket emits both error
+  and close, preventing duplicate retry timers.
 
 ### Fixed
 

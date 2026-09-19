@@ -162,10 +162,9 @@ function callbackPayload(notification, action) {
   };
 }
 
-// The layer-shell surface only carries the pill; notifications go to the
-// desktop notification daemon, so they never keep the surface mapped.
+// Notifications keep the capsule visible even after dictation has ended.
 function visible(s) {
-  return s.mode !== "hidden";
+  return s.mode !== "hidden" || s.notification !== null;
 }
 
 if (typeof module !== "undefined" && module.exports) {

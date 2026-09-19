@@ -1,0 +1,30 @@
+name: Native capsule checks
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: capsule-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats shellcheck qt6-declarative-dev-tools qml6-module-qttest qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtqml-workerscript
+      - name: Patch and reducer tests
+        run: |
+          node --test app/tests/*.test.cjs
+          bats app/tests/*.bats
+      - name: Capsule behavior
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: /usr/lib/qt6/bin/qmltestrunner -input app/tests/qml
+      - name: Shell checks
+        run: shellcheck app/scripts/build-linux.sh app/scripts/verify-patches.sh app/scripts/patches/linux-background-launch.sh app/scripts/patches/linux-native-flowbar.sh
