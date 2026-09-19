@@ -10,6 +10,11 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
 
 ### Changed
 
+- Keep the backing layer stable during entry and message animation to avoid
+  Wayland resize jitter. Preserve recording-control geometry during entry.
+- Add `install-flowbar-plugin.sh --reload` and runtime-version verification so
+  cached QML cannot be mistaken for a successfully activated update.
+
 - Replace the flat capsule tint with a frosted glass material, shaped highlights,
   inset depth and glass buttons. Add a scoped Hyprland blur preset and constrain
   the native layer to the capsule's bounds.

@@ -1,5 +1,27 @@
 # Glass capsule validation
 
+## Runtime reload and opening fix, 2026-09-20
+
+The earlier activation check was insufficient: the on-disk plugin and socket
+were current, but Omarchy's existing QML engine still displayed the old material.
+A new runtime-version IPC call remained unavailable after a plugin rescan and
+became available after a full shell restart. Updates now support `--reload` and
+verify the running version, not only the socket.
+
+The updated material was then captured on the actual laptop display at 160%
+scale. Opening animation resized the layer window every frame, producing visible
+position jumps. The backing width is now fixed at 404 logical pixels, including
+padding; recording uses a 94-pixel height. The window grows only for messages
+and holds that allocation until hidden. Capsule animation stays inside it.
+Normal entry preserves control geometry and uses a short fade/scale transition.
+
+Three 60 fps recording-open captures before the window fix showed 32 lower-edge
+jumps greater than two physical pixels. Three captures after the correction
+showed none under the same detection threshold. These are local visual regression
+measurements, not an FPS or energy benchmark. Nine QML behavior tests passed,
+including entry geometry and stable message-layout targets.
+
+
 ## Material revision, 2026-09-20
 
 The first installed pill was too flat and transparent. It has been replaced with

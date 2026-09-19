@@ -113,7 +113,9 @@ omarchy restart shell
 ```
 
 The plugin directory is a symlink into this repo, so keep the clone where it is.
-After editing plugin code run `omarchy restart shell` again.
+After editing plugin code run the installer with `--reload` again. A plugin
+rescan can keep old QML components cached; the installer verifies the running
+version after restarting the shell.
 
 The native capsule includes a frosted material, illuminated bevels, glass buttons,
 spring transitions and actionable errors. App launches run in the background after onboarding; use

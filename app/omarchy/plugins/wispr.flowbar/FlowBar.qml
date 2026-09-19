@@ -101,6 +101,7 @@ Item {
   // `omarchy-shell wisprflowbar <fn> [args]` for scripted testing.
   IpcHandler {
     target: "wisprflowbar"
+    function version(): string { return "0.3.1" }
     function inject(line: string): string { root.apply(line); return "ok" }
     function press(action: string): string { root.send(action); return "ok" }
     function state(): string { return JSON.stringify(root.state) }
@@ -119,8 +120,16 @@ Item {
       screen: modelData
       visible: (root.shown || capsule.opacity > 0) && modelData.name === root.focusedName
       anchors { bottom: true }
-      implicitWidth: Math.ceil(capsule.width) + 48
-      implicitHeight: Math.ceil(capsule.height) + 48
+      implicitWidth: Math.min(panel.screen.width - 32, 356) + 48
+      // A layer resize is a Wayland configure/ack transaction. Keep the
+      // backing window stable while Qt animates the capsule inside it.
+      property int bufferHeight: 94
+      implicitHeight: bufferHeight
+      function accommodateContent() {
+        var needed = Math.ceil(capsule.targetHeight) + 48
+        if (!visible || needed > bufferHeight) bufferHeight = needed
+      }
+      onVisibleChanged: if (!visible) accommodateContent()
       color: "transparent"
       WlrLayershell.namespace: "wispr-flowbar"
       WlrLayershell.layer: WlrLayer.Overlay
@@ -143,6 +152,8 @@ Item {
         active: panel.visible
         reducedMotion: root.reducedMotion
         translucent: root.translucent
+        onTargetHeightChanged: panel.accommodateContent()
+        Component.onCompleted: panel.accommodateContent()
         onCancel: root.send("status:cancelClicked")
         onStop: root.send("status:stopClicked")
         onDismiss: root.dismiss()

@@ -3,7 +3,7 @@
 # install-flowbar-plugin.sh -- link the native Flow Bar plugin into the user's
 # omarchy-shell plugin directory and enable it.
 #
-# Usage: install-flowbar-plugin.sh [--uninstall]
+# Usage: install-flowbar-plugin.sh [--reload|--uninstall]
 #===============================================================================
 set -uo pipefail
 
@@ -49,14 +49,27 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 	sleep 0.5
 done
 
+# Rescanning may retain QML component types in the existing engine. A real
+# restart is required for updates; callers choose it explicitly with --reload.
+expected_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$src/manifest.json") || exit 1
+if [[ ${1:-} == '--reload' ]]; then
+	omarchy restart shell || exit 1
+fi
+
 sock="${XDG_RUNTIME_DIR:-/tmp}/wispr-flow/flowbar.sock"
+runtime_version=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-	[[ -S $sock ]] && break
+	runtime_version=$(omarchy-shell wisprflowbar version 2>/dev/null || true)
+	[[ -S $sock && $runtime_version == "$expected_version" ]] && break
 	sleep 0.5
 done
-if [[ -S $sock ]]; then
-	echo "OK: plugin enabled, socket at $sock"
-	echo 'Restart Wispr Flow; the launcher now picks native Wayland.'
+if [[ -S $sock && $runtime_version == "$expected_version" ]]; then
+	echo "OK: native plugin $runtime_version is running, socket at $sock"
+	echo 'Restart Wispr Flow if this is the first native plugin installation.'
+elif [[ ${1:-} == '--reload' ]]; then
+	echo "ERROR: expected running plugin $expected_version, got ${runtime_version:-no version}." >&2
+	exit 1
 else
-	echo "WARNING: socket not present at $sock yet; check omarchy-shell log." >&2
+	echo 'Plugin files linked; activation is not verified.'
+	echo "Run this installer with --reload to restart the shell and verify version $expected_version."
 fi

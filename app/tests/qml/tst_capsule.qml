@@ -34,6 +34,21 @@ TestCase {
     capsule.reducedMotion = false; capsule.mode = "processing"; capsule.active = false
     compare(capsule.processing, false)
   }
+  function test_recording_entry_keeps_content_geometry() {
+    compare(capsule.width, 176); compare(capsule.height, 46)
+    capsule.reducedMotion = false; capsule.mode = "listening"
+    for (var i = 0; i < 8; ++i) {
+      wait(25); compare(capsule.width, 176); compare(capsule.height, 46)
+    }
+    tryCompare(capsule, "scale", 1)
+  }
+  function test_message_layout_does_not_follow_animated_width() {
+    capsule.reducedMotion = false; capsule.mode = "listening"
+    capsule.notification = {title:"Microphone unavailable",body:"Check your microphone and try again. ".repeat(3),actions:[]}
+    wait(20); var target = capsule.targetHeight
+    wait(100); compare(capsule.targetHeight, target)
+    wait(200); compare(capsule.targetHeight, target)
+  }
   function test_recording_buttons() {
     capsule.mode = "listening"; wait(10)
     compare(capsule.width, 176); compare(capsule.height, 46)

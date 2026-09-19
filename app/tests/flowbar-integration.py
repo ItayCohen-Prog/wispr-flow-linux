@@ -27,7 +27,7 @@ def recording_bounds():
         for level in monitor['levels'].values():
             for layer in level:
                 if layer['namespace'] == 'wispr-flowbar':
-                    return 220 <= layer['w'] <= 228 and 90 <= layer['h'] <= 98
+                    return 400 <= layer['w'] <= 408 and 90 <= layer['h'] <= 98
     return False
 
 def eventually(fn, expected, label):

@@ -14,7 +14,7 @@ Item {
   readonly property bool wanted: mode !== "hidden" || notification !== null
   readonly property bool expanded: notification !== null
   readonly property bool hovered: hover.hovered
-  readonly property bool animating: widthMotion.running || heightMotion.running || opacityMotion.running
+  readonly property bool animating: widthMotion.running || heightMotion.running || opacityMotion.running || entranceMotion.running
   readonly property bool processing: mode === "processing" && active && visible && !reducedMotion
   property real phase: 0
   signal cancel()
@@ -22,8 +22,12 @@ Item {
   signal dismiss()
   signal action(var notification, var action)
 
-  width: wanted ? Math.min(availableWidth, expanded ? 356 : 176) : 110
-  height: wanted ? Math.min(availableHeight, expanded ? details.implicitHeight + 28 + (mode !== "hidden" ? 46 : 0) : 46) : 16
+  readonly property real targetWidth: Math.min(availableWidth, expanded ? 356 : 176)
+  readonly property real targetHeight: Math.min(availableHeight, expanded ? details.implicitHeight + 28 + (mode !== "hidden" ? 46 : 0) : 46)
+  width: targetWidth
+  height: targetHeight
+  scale: wanted ? 1 : 0.94
+  Behavior on scale { NumberAnimation { id: entranceMotion; duration: capsule.reducedMotion ? 0 : 180; easing.type: Easing.OutCubic } }
   readonly property real radius: Math.min(24, height / 2)
   opacity: wanted ? 1 : 0
   visible: wanted || opacity > 0
@@ -96,7 +100,8 @@ Item {
     Behavior on opacity { NumberAnimation { duration: capsule.reducedMotion ? 0 : 120 } }
     Column {
       id: details
-      width: parent.width
+      // Measure text at the destination width, not every spring frame.
+      width: Math.max(0, capsule.targetWidth - 36)
       spacing: 10
       Row {
         width: parent.width; spacing: 8

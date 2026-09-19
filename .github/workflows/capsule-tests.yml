@@ -27,4 +27,4 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: /usr/lib/qt6/bin/qmltestrunner -input app/tests/qml
       - name: Shell checks
-        run: shellcheck app/scripts/build-linux.sh app/scripts/verify-patches.sh app/scripts/patches/linux-background-launch.sh app/scripts/patches/linux-native-flowbar.sh
+        run: shellcheck app/scripts/omarchy/install-flowbar-plugin.sh app/scripts/build-linux.sh app/scripts/verify-patches.sh app/scripts/patches/linux-background-launch.sh app/scripts/patches/linux-native-flowbar.sh

@@ -49,8 +49,9 @@ hl.layer_rule({
 })
 ```
 
-The alpha cutoff excludes the material's soft shadow. The layer follows the
-capsule's width and height instead of allocating a monitor-wide strip. The preset
+The alpha cutoff excludes the material's soft shadow. The native window reserves the card width and keeps its backing buffer stable
+during animation. It grows vertically when a message needs more space, then
+reclaims that space after hiding. The preset
 uses size 6, two blur passes and no wallpaper-only xray blur. The plugin installer
 does not change compositor settings automatically.
 
@@ -95,7 +96,7 @@ PIDs and socket of the disposable preview. It reports CPU as a percentage of
 one logical core. It does not measure GPU energy or isolate Qt from the preview.
 
 The QML plugin remains separate from the proprietary AppImage. Install it with
-`scripts/omarchy/install-flowbar-plugin.sh`, following the main README. To roll
+`scripts/omarchy/install-flowbar-plugin.sh --reload`, following the main README. To roll
 back, install the previous Arch package and restore the previous plugin revision,
 then reload the shell when convenient. Remove the loaded glass-only Lua preset
 to restore the previous compositor blur policy. `--uninstall` removes the plugin link;
@@ -116,3 +117,15 @@ build tool on the user's machine. After editing the GLSL source, rebuild it with
 and dark backdrops. Its Qt backdrop blur is **preview-only**, not a substitute
 for the native layer test. It requires Qt Quick Effects. The native preview also
 accepts `WISPR_FLOWBAR_PREVIEW_SCENE=grey` or `colour`.
+
+## Updating a running shell
+
+A plugin rescan can leave QML component types cached in the existing engine. Use
+`install-flowbar-plugin.sh --reload` to restart the shell and verify the runtime
+version, rather than checking only the files or socket. The read-only command
+`omarchy-shell wisprflowbar version` must report the installed manifest version.
+
+Recording entry uses a 180 ms fade/scale transition inside a stable backing
+window. Width and height springs are reserved for message expansion. Message
+text is measured at the destination width, so its wrapping cannot continually
+retarget the height spring during expansion.
