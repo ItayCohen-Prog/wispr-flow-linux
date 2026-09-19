@@ -11,6 +11,7 @@ ShellRoot {
     title: "Wispr Flow glass preview"
     implicitWidth: 960; implicitHeight: 640
     color: "#17262f"
+    readonly property string scene: Quickshell.env("WISPR_FLOWBAR_PREVIEW_SCENE") || "teal"
     property string response: "Ready. Controls send the same messages as Wispr."
     property string socketPath: Quickshell.env("WISPR_FLOWBAR_SOCKET") || (Quickshell.env("XDG_RUNTIME_DIR") + "/wispr-flow/flowbar.sock")
     function send(t, p) { client.write(JSON.stringify({t:t,p:p}) + "\n"); client.flush() }
@@ -26,11 +27,13 @@ ShellRoot {
       anchors.fill: parent
       gradient: Gradient {
         orientation: Gradient.Horizontal
-        GradientStop { position: 0; color: "#183b42" }
-        GradientStop { position: 0.5; color: "#637a7c" }
-        GradientStop { position: 1; color: "#364451" }
+        GradientStop { position: 0; color: demo.scene === "grey" ? "#b0b7c6" : demo.scene === "colour" ? "#d084eb" : "#183b42" }
+        GradientStop { position: 0.5; color: demo.scene === "grey" ? "#858d9e" : demo.scene === "colour" ? "#b156db" : "#637a7c" }
+        GradientStop { position: 1; color: demo.scene === "grey" ? "#626e83" : demo.scene === "colour" ? "#5f27b6" : "#364451" }
       }
     }
+    Rectangle { visible: demo.scene === "colour"; x: demo.width / 2 - 240; y: demo.height - 180; width: 280; height: 280; radius: 140; color: "#ffd351" }
+    Rectangle { visible: demo.scene === "colour"; x: demo.width / 2 + 80; y: demo.height - 70; width: 260; height: 260; radius: 130; color: "#ef952b" }
     Row {
       visible: Quickshell.env("WISPR_FLOWBAR_TEST_PATTERN") === "1"
       anchors.bottom: parent.bottom

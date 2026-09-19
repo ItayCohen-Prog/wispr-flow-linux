@@ -16,7 +16,7 @@ Item {
   readonly property string sockDir: runtimeDir + "/wispr-flow"
   readonly property string sockPath: Quickshell.env("WISPR_FLOWBAR_SOCKET") || sockDir + "/flowbar.sock"
   readonly property bool reducedMotion: Quickshell.env("WISPR_FLOWBAR_REDUCED_MOTION") === "1"
-  readonly property bool translucent: Quickshell.env("WISPR_FLOWBAR_MATERIAL") === "frosted"
+  readonly property bool translucent: Quickshell.env("WISPR_FLOWBAR_MATERIAL") !== "solid"
   readonly property bool shown: Model.visible(state)
   readonly property string focusedName: Hyprland.focusedMonitor ? Hyprland.focusedMonitor.name : ""
   // Notification/action counts used by the integration test.
@@ -118,7 +118,8 @@ Item {
       required property var modelData
       screen: modelData
       visible: (root.shown || capsule.opacity > 0) && modelData.name === root.focusedName
-      anchors { bottom: true; left: true; right: true }
+      anchors { bottom: true }
+      implicitWidth: Math.ceil(capsule.width) + 48
       implicitHeight: Math.ceil(capsule.height) + 48
       color: "transparent"
       WlrLayershell.namespace: "wispr-flowbar"
@@ -134,7 +135,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 30
-        availableWidth: panel.width - 32
+        availableWidth: panel.screen.width - 32
         availableHeight: panel.screen.height - 80
         mode: root.state.mode
         level: root.state.level

@@ -21,6 +21,15 @@ def visible():
     layers = json.loads(subprocess.check_output(['hyprctl', '-j', 'layers']))
     return any(layer['namespace'] == 'wispr-flowbar' for monitor in layers.values() for level in monitor['levels'].values() for layer in level)
 
+def recording_bounds():
+    layers = json.loads(subprocess.check_output(['hyprctl', '-j', 'layers']))
+    for monitor in layers.values():
+        for level in monitor['levels'].values():
+            for layer in level:
+                if layer['namespace'] == 'wispr-flowbar':
+                    return 220 <= layer['w'] <= 228 and 90 <= layer['h'] <= 98
+    return False
+
 def eventually(fn, expected, label):
     until = time.monotonic() + 3
     while time.monotonic() < until:
@@ -38,6 +47,7 @@ with socket.socket(socket.AF_UNIX) as client:
     for i in range(3):
         send('status:dictationStatus', 'listening')
         eventually(visible, True, f'opening {i+1}')
+        eventually(recording_bounds, True, f'capsule-sized layer {i+1}')
         send('status:dictationStatus', 'idle')
         eventually(visible, False, f'closing {i+1}')
     send('notification:show', {'title':'Test error', 'body':'Notification without recording', 'timeout':1000})

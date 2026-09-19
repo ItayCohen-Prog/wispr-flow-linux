@@ -1,6 +1,47 @@
-# Glass capsule validation — 2026-09-19
+# Glass capsule validation
 
-The supported implementation uses Qt Quick primitives, static highlights and
+## Material revision, 2026-09-20
+
+The first installed pill was too flat and transparent. It has been replaced with
+a frosted body, broad illuminated bevels, inset shading and glass buttons, checked
+against the supplied grey and colourful references. The material is one static
+analytic shader per shape; it does not read the desktop. Hyprland supplies the
+actual backdrop blur. The layer now measures 224 x 94 logical pixels in recording
+mode, including padding, rather than spanning the monitor.
+
+The revised native overlay was rendered on Hyprland 0.56.2 / Qt 6.11.2 inside an
+isolated desktop at 1024 x 768. Fourteen real layer lifecycle and size checks,
+seven QML behavior tests and four Node regression tests passed. A six-second capture of
+processing contained 170 distinct frames out of 180, with 27-29 distinct frames
+in every second. Computer use checked the recording and notification controls.
+
+The scoped blur preset was checked with a translucent window over stripes. Its
+captures with global blur enabled and disabled were byte-identical. A positive
+control that allowed blur on that window visibly softened the stripes and
+produced a different capture. The Wispr capsule itself softened the stripes;
+the shadow and surrounding area stayed clear.
+
+Ten-second samples after settling, preview and compositor combined, as a percent
+of one logical core:
+
+| Revised material | Hidden | Stationary notification | Listening | Processing |
+| --- | ---: | ---: | ---: | ---: |
+| With scoped blur | 0.00% | 0.00% | 2.20% | 1.70% |
+| Same material, blur disabled | 0.00% | 0.00% | 1.90% | 1.50% |
+
+The standalone Qt preview used approximately 182-186 MiB RSS, including its demo
+window, Qt runtime and rendering resources. This is not the incremental memory
+usage of the plugin in Omarchy. These are short CPU samples, not GPU power or
+battery measurements. Zero measured CPU ticks is not a zero-overhead guarantee.
+Do not compare these timings directly to the earlier run below: the layer size,
+preview dimensions and material have changed.
+
+## Earlier implementation, 2026-09-19
+
+The following results describe the first material, before the visual correction.
+They are retained as historical evidence, not a claim about the revised look.
+
+That implementation used Qt Quick primitives, static highlights and
 short spring transitions. Its processing meter updates at 30 Hz and stops when
 hidden. Real compositor blur is optional. Refraction plugins are not required.
 
@@ -66,7 +107,8 @@ above use the bounded timer.
 
 Microphone input, account authentication, transcription quality and injection
 into a real user's application were not tested with the disposable profile.
-The recording renderer/helper implementation was retained. Applying the package
-and plugin to the user's running desktop is a separate activation step.
+The recording renderer/helper implementation was retained. The package and first
+plugin were subsequently activated on the user's desktop;
+this did not establish a visual match to the reference.
 
 See [material configuration and reproducible checks](glass-capsule.md).

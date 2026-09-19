@@ -1,6 +1,6 @@
 import QtQuick
 
-Rectangle {
+Item {
   id: capsule
   property string mode: "hidden"
   property real level: 0
@@ -9,8 +9,8 @@ Rectangle {
   property real availableHeight: 500
   property bool reducedMotion: false
   property bool active: true
-  // Opt in after enabling compositor blur. The default remains readable anywhere.
-  property bool translucent: false
+  // Frosted material needs the scoped Hyprland layer blur rule.
+  property bool translucent: true
   readonly property bool wanted: mode !== "hidden" || notification !== null
   readonly property bool expanded: notification !== null
   readonly property bool hovered: hover.hovered
@@ -24,33 +24,17 @@ Rectangle {
 
   width: wanted ? Math.min(availableWidth, expanded ? 356 : 176) : 110
   height: wanted ? Math.min(availableHeight, expanded ? details.implicitHeight + 28 + (mode !== "hidden" ? 46 : 0) : 46) : 16
-  radius: Math.min(24, height / 2)
+  readonly property real radius: Math.min(24, height / 2)
   opacity: wanted ? 1 : 0
   visible: wanted || opacity > 0
-  color: translucent ? "#98212c32" : "#f21e272d"
-  border.width: 1
-  border.color: mode === "error" ? "#85e3b996" : "#60e5f4fa"
-  antialiasing: true
-
   Behavior on width { enabled: capsule.active && !capsule.reducedMotion; SpringAnimation { id: widthMotion; spring: capsule.reducedMotion ? 0 : 4.5; damping: 0.82; mass: 1; epsilon: 0.25 } }
   Behavior on height { enabled: capsule.active && !capsule.reducedMotion; SpringAnimation { id: heightMotion; spring: capsule.reducedMotion ? 0 : 4.5; damping: 0.86; mass: 1; epsilon: 0.25 } }
   Behavior on opacity { NumberAnimation { id: opacityMotion; duration: capsule.reducedMotion ? 0 : 160; easing.type: Easing.OutCubic } }
 
-  // A static highlight costs no timer, shader pass or background sampling.
-  Rectangle {
+  GlassMaterial {
     anchors.fill: parent
-    anchors.margins: 1
-    radius: Math.max(0, parent.radius - 1)
-    gradient: Gradient {
-      GradientStop { position: 0; color: "#24ffffff" }
-      GradientStop { position: 0.38; color: "#04ffffff" }
-      GradientStop { position: 1; color: "#08000000" }
-    }
-  }
-  Rectangle {
-    anchors.left: parent.left; anchors.right: parent.right
-    anchors.top: parent.top; anchors.leftMargin: 20; anchors.rightMargin: 20; anchors.topMargin: 1
-    height: 1; color: "#35ffffff"
+    radius: capsule.radius
+    tint: capsule.translucent ? "#887c8495" : "#f2586374"
   }
   HoverHandler { id: hover }
 

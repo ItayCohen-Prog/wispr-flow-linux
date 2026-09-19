@@ -8,6 +8,12 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the flat capsule tint with a frosted glass material, shaped highlights,
+  inset depth and glass buttons. Add a scoped Hyprland blur preset and constrain
+  the native layer to the capsule's bounds.
+
 ### Added
 
 - Glass capsule with interruptible spring transitions, bounded actionable
