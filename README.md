@@ -175,6 +175,12 @@ git subtree pull --prefix=app    https://github.com/wispr-flow-linux/wispr-flow-
 git subtree pull --prefix=helper https://github.com/wispr-flow-linux/helper.git main
 ```
 
+Upstream's own `.github/` folders are deliberately not kept: GitHub only runs
+workflows from the repository root, so they would be dead files here, and this
+repo has no package servers or release pipeline to drive. If a pull reports a
+modified/deleted conflict on one of those workflow files, resolve it with
+`git rm` on that path. The checks that do run live in `.github/workflows/`.
+
 ## License
 
 Build scripts and the helper are public domain under the Unlicense, as
