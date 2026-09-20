@@ -380,12 +380,18 @@ _doctor_check_electron() {
 # corruption) that is otherwise invisible.
 #------------------------------------------------------------------------------
 _doctor_check_desktop_entry() {
-	local desktop_file='/usr/share/applications/wispr-flow.desktop'
-	if [[ -f $desktop_file ]]; then
-		_pass "Desktop entry: $desktop_file"
-	else
-		_warn 'Desktop entry: not found (expected for AppImage installs)'
-	fi
+	# The Arch package (packaging/arch/PKGBUILD) installs it under its pkgname.
+	local desktop_file
+	for desktop_file in \
+		/usr/share/applications/wispr-flow-appimage.desktop \
+		/usr/share/applications/wispr-flow.desktop
+	do
+		if [[ -f $desktop_file ]]; then
+			_pass "Desktop entry: $desktop_file"
+			return
+		fi
+	done
+	_warn 'Desktop entry: not found (expected when running the bare AppImage)'
 }
 
 _doctor_check_disk_space() {
