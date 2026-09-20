@@ -115,7 +115,10 @@ makepkg -si
 ```
 
 That puts the app under `/opt/wispr-flow-appimage` with a `wispr-flow`
-launcher and desktop entry. The package file is git-ignored; keep it in
+launcher and desktop entry. If Wispr Flow is already running, quit it and
+start it again: a running instance keeps reading the old `app.asar` at the
+old offsets, and the first thing to break is the audio recorder (dictation
+stops the moment it starts). The package file is git-ignored; keep it in
 `packaging/arch/` if you want a rollback for the next rebuild. Once, after the
 first install, grant input access:
 
@@ -172,7 +175,7 @@ cd helper && cargo build --release && cd ..
 cd app && ./build.sh --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
 ```
 
-then repeat step 4 with a higher `pkgver`. Wispr has shipped newer versions
+then repeat step 4 with a higher `pkgver` and restart Wispr Flow. Wispr has shipped newer versions
 since 1.6.7 (their Squirrel feed lists 1.6.721), but upstream has not moved the
 pin yet, and the patches are only verified against 1.6.7.
 
