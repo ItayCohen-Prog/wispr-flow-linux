@@ -74,9 +74,12 @@ access).
   stuck by a missed release or an unplugged device gets recovered. I answer from
   the live kernel bitmap, not a tracked set, and that's what makes it
   self-healing.
-- **Keyboards are filtered by capability.** Only `/dev/input/event*` nodes whose
-  `EVIOCGBIT(EV_KEY)` advertises letter keys (KEY_A..KEY_Z) are watched, so mice
-  and touchpads don't spawn reader threads.
+- **Devices are filtered by capability.** Only `/dev/input/event*` nodes whose
+  `EVIOCGBIT(EV_KEY)` advertises letter keys (KEY_A..KEY_Z) or an extra mouse
+  button (BTN_MIDDLE..BTN_TASK) are watched, so touchpads and power buttons
+  don't spawn reader threads. Mouse buttons go out as `inputType: "mouse"`
+  events (`mouse_event` / `mouse_event_release`, key 3 = "Mouse 4"), which is
+  what lets push-to-talk sit on a side button.
 
 ## The requirement that bites (evdev only)
 

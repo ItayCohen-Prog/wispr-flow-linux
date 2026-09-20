@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use super::{emit_keypress, HeldKeys};
+use super::{emit_keypress, emit_mouse_button, HeldKeys};
 use crate::backend::EventSink;
 use crate::keymap;
 
@@ -28,6 +28,9 @@ const KEY_RELEASE: i32 = 0;
 // (which carry BTN_* codes but not letter keys).
 const KEY_A: u16 = 30;
 const KEY_Z: u16 = 44;
+// Extra mouse buttons the app can bind as shortcuts ("Mouse 4", ...).
+const BTN_MIDDLE: u16 = 0x112;
+const BTN_TASK: u16 = 0x117;
 
 // Widest keycode we map; a (KEY_MAX/8 + 1)-byte bitmap covers every code.
 const KEY_MAX: usize = 0x2ff;
@@ -60,19 +63,22 @@ fn is_event_node(path: &Path) -> bool {
         .is_some_and(|n| n.starts_with("event"))
 }
 
-/// True if the open device advertises ordinary keyboard keys (KEY_A..KEY_Z),
-/// which filters out mice, touchpads, and other non-keyboard event nodes.
-fn is_keyboard(fd: libc::c_int) -> bool {
+/// True if the open device can produce shortcut input: ordinary keyboard keys
+/// (KEY_A..KEY_Z) or an extra mouse button (BTN_MIDDLE..BTN_TASK). Filters out
+/// touchpads, power buttons, and other event nodes with neither.
+fn is_shortcut_device(fd: libc::c_int) -> bool {
     let mut bitmap = [0u8; BITMAP_LEN];
     if unsafe { libc::ioctl(fd, eviocgbit_key(), bitmap.as_mut_ptr()) } < 0 {
         return false;
     }
-    bit_set(&bitmap, KEY_A) && bit_set(&bitmap, KEY_Z)
+    let keyboard = bit_set(&bitmap, KEY_A) && bit_set(&bitmap, KEY_Z);
+    keyboard || (BTN_MIDDLE..=BTN_TASK).any(|code| bit_set(&bitmap, code))
 }
 
-/// Open every readable keyboard under `/dev/input`, returning `(path, file)`
-/// pairs with blocking fds ready for `read`. Empty when none are readable.
-fn open_keyboards() -> Vec<(PathBuf, File)> {
+/// Open every readable keyboard and mouse under `/dev/input`, returning
+/// `(path, file)` pairs with blocking fds ready for `read`. Empty when none are
+/// readable.
+fn open_devices() -> Vec<(PathBuf, File)> {
     let dir = match std::fs::read_dir("/dev/input") {
         Ok(d) => d,
         Err(e) => {
@@ -92,18 +98,18 @@ fn open_keyboards() -> Vec<(PathBuf, File)> {
             Ok(f) => f,
             Err(_) => continue, // not readable -> skip (permission or busy)
         };
-        if is_keyboard(file.as_raw_fd()) {
+        if is_shortcut_device(file.as_raw_fd()) {
             out.push((path, file));
         }
     }
     out
 }
 
-/// Start evdev capture: one reader thread per keyboard. Returns a [`HeldKeys`]
+/// Start evdev capture: one reader thread per device. Returns a [`HeldKeys`]
 /// handle, or `None` when no device is readable (so the caller can fall back).
 pub fn start(events: EventSink) -> Option<Box<dyn HeldKeys>> {
-    let keyboards = open_keyboards();
-    if keyboards.is_empty() {
+    let devices = open_devices();
+    if devices.is_empty() {
         log::warn!(
             "evdev capture: no readable keyboard under /dev/input — push-to-talk \
              and the in-app shortcut recorder will NOT work. Run \
@@ -114,7 +120,7 @@ pub fn start(events: EventSink) -> Option<Box<dyn HeldKeys>> {
     }
     let index = Arc::new(AtomicU64::new(0));
     let pid = std::process::id();
-    for (path, file) in keyboards {
+    for (path, file) in devices {
         log::info!("evdev capture: watching {}", path.display());
         let events = events.clone();
         let index = index.clone();
@@ -127,7 +133,8 @@ pub fn start(events: EventSink) -> Option<Box<dyn HeldKeys>> {
 }
 
 /// Blocking read loop for one device: decode `input_event`s and emit a
-/// `KeypressEvent` for every key press/release (auto-repeat is ignored).
+/// `KeypressEvent` for every key or extra-mouse-button press/release
+/// (auto-repeat is ignored).
 fn read_device(path: &Path, mut file: File, events: &EventSink, index: &AtomicU64, pid: u32) {
     let evsize = std::mem::size_of::<libc::input_event>();
     let mut buf = vec![0u8; evsize * 64];
@@ -160,6 +167,10 @@ fn read_device(path: &Path, mut file: File, events: &EventSink, index: &AtomicU6
                 KEY_RELEASE => false,
                 _ => continue, // skip auto-repeat (value == 2)
             };
+            if let Some(button) = keymap::evdev_to_mouse_button(ev.code) {
+                emit_mouse_button(events, index, pid, button, press);
+                continue;
+            }
             let Some(vk) = keymap::evdev_to_vk(ev.code) else {
                 continue; // unmapped physical key — nothing the app understands
             };

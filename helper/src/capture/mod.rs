@@ -10,7 +10,9 @@
 //! display server, so it is independent of the compositor. Needs read access
 //! to the input devices (logind `uaccess` ACL or the `input` group). Each
 //! press/release is translated to the Windows Virtual-Key code the app expects
-//! (`keymap::evdev_to_vk`).
+//! (`keymap::evdev_to_vk`). Extra mouse buttons (middle, side, ...) go out as
+//! `inputType: "mouse"` frames (`keymap::evdev_to_mouse_button`), which is what
+//! lets the in-app recorder bind "Mouse 4" and friends.
 
 mod evdev;
 
@@ -56,14 +58,42 @@ pub fn spawn(events: EventSink) -> Box<dyn HeldKeys> {
 /// sequence the app cross-checks against its own counter (it warns on a gap), so
 /// every backend shares a single counter regardless of how many readers feed it.
 fn emit_keypress(events: &EventSink, index: &AtomicU64, pid: u32, vk: u32, press: bool) {
+    let event_type = if press {
+        "key_event_press"
+    } else {
+        "key_event_release"
+    };
+    emit_input(events, index, pid, vk, event_type, "keyboard");
+}
+
+/// Emit one mouse-button `KeypressEvent`. `button` is the app's OS button
+/// number (2 = middle, 3 = "Mouse 4", 4 = "Mouse 5", ...), which its keyboard
+/// service translates to its own mouse keycodes. Shares the keypress counter.
+fn emit_mouse_button(events: &EventSink, index: &AtomicU64, pid: u32, button: u32, press: bool) {
+    let event_type = if press {
+        "mouse_event"
+    } else {
+        "mouse_event_release"
+    };
+    emit_input(events, index, pid, button, event_type, "mouse");
+}
+
+fn emit_input(
+    events: &EventSink,
+    index: &AtomicU64,
+    pid: u32,
+    key: u32,
+    event_type: &str,
+    input_type: &str,
+) {
     let idx = index.fetch_add(1, Ordering::Relaxed) + 1;
     let env = crate::proto::request(
         "KeypressEvent",
         json!({ "payload": {
-            "eventType": if press { "key_event_press" } else { "key_event_release" },
-            "key": vk,
+            "eventType": event_type,
+            "key": key,
             "index": idx,
-            "inputType": "keyboard",
+            "inputType": input_type,
         } }),
         &format!("kp-{pid}-{idx}"),
     );
@@ -97,5 +127,28 @@ mod tests {
         assert_eq!(kp["eventType"], "key_event_release");
         assert_eq!(kp["index"], 2); // shared monotonic counter advances
         assert_eq!(release["HelperAPIRequest"]["uuid"], "kp-4242-2");
+    }
+
+    // Mouse buttons use their own event/input types; the app ignores the key
+    // number unless `inputType` is "mouse".
+    #[test]
+    fn emit_mouse_button_builds_mouse_event_frame() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let index = AtomicU64::new(0);
+
+        emit_mouse_button(&tx, &index, 4242, 3, true);
+        emit_mouse_button(&tx, &index, 4242, 3, false);
+
+        let press = rx.recv().expect("press frame");
+        let kp = &press["HelperAPIRequest"]["KeypressEvent"]["payload"];
+        assert_eq!(kp["eventType"], "mouse_event");
+        assert_eq!(kp["key"], 3);
+        assert_eq!(kp["index"], 1);
+        assert_eq!(kp["inputType"], "mouse");
+
+        let release = rx.recv().expect("release frame");
+        let kp = &release["HelperAPIRequest"]["KeypressEvent"]["payload"];
+        assert_eq!(kp["eventType"], "mouse_event_release");
+        assert_eq!(kp["index"], 2);
     }
 }

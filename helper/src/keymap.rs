@@ -275,9 +275,34 @@ pub const EVDEV_MODIFIERS: &[u16] = &[
     126, // KEY_RIGHTMETA
 ];
 
+/// Returns the app's OS mouse-button number for an evdev `BTN_*` code, or None
+/// for buttons it has no shortcut slot for (left/right click included). The
+/// app numbers them 2 = middle, 3 = "Mouse 4", 4 = "Mouse 5", ... and only
+/// reads the number on `inputType: "mouse"` frames.
+pub fn evdev_to_mouse_button(code: u16) -> Option<u32> {
+    Some(match code {
+        0x112 => 2, // BTN_MIDDLE
+        0x113 => 3, // BTN_SIDE    -> Mouse 4
+        0x114 => 4, // BTN_EXTRA   -> Mouse 5
+        0x115 => 5, // BTN_FORWARD -> Mouse 6
+        0x116 => 6, // BTN_BACK    -> Mouse 7
+        0x117 => 7, // BTN_TASK    -> Mouse 8
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mouse_buttons_map_to_app_button_numbers() {
+        assert_eq!(evdev_to_mouse_button(0x113), Some(3)); // BTN_SIDE = Mouse 4
+        assert_eq!(evdev_to_mouse_button(0x114), Some(4)); // BTN_EXTRA = Mouse 5
+        assert_eq!(evdev_to_mouse_button(0x110), None); // BTN_LEFT
+        assert_eq!(evdev_to_mouse_button(0x111), None); // BTN_RIGHT
+        assert_eq!(evdev_to_mouse_button(30), None); // KEY_A is not a button
+    }
 
     /// `evdev_to_vk` must be the exact inverse of `vk_to_evdev`: every VK the app
     /// can send round-trips through evdev and back to the same VK. Guards against
