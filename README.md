@@ -6,8 +6,9 @@ Linux. It is a fork of the community port
 Rust [helper](https://github.com/wispr-flow-linux/helper), kept together in one
 repo so a single clone gives you everything I run.
 
-> **Only tested on Omarchy** (Arch Linux, Hyprland, omarchy-shell). Nothing here
-> has been tried on any other distro or desktop. Other distros should follow the
+> **Only tested on Omarchy** (Arch Linux, Hyprland, omarchy-shell): Omarchy 4.0.2
+> with Hyprland 0.56.2 and Quickshell 0.3.1, on an NVIDIA laptop with a 1x and a
+> 1.6x monitor. Nothing here has been tried on any other distro or desktop. Other distros should follow the
 > upstream docs in `app/docs/` instead, and the Flow Bar plugin below will not
 > apply to them.
 
@@ -94,9 +95,9 @@ makepkg -si
 ```
 
 That puts the app under `/opt/wispr-flow-appimage` with a `wispr-flow`
-launcher and desktop entry. The package file stays in `packaging/arch/` as a
-rollback for the next rebuild. Once, after the first install, grant input
-access:
+launcher and desktop entry. The package file is git-ignored; keep it in
+`packaging/arch/` if you want a rollback for the next rebuild. Once, after the
+first install, grant input access:
 
 ```bash
 ./wispr-flow-1.6.7-x86_64.AppImage --install-udev-rules
@@ -109,19 +110,28 @@ apply.
 
 ```bash
 cd ../../app
-scripts/omarchy/install-flowbar-plugin.sh
-omarchy restart shell
+scripts/omarchy/install-flowbar-plugin.sh --reload
 ```
 
-The plugin directory is a symlink into this repo, so keep the clone where it is.
-After editing plugin code run the installer with `--reload` again. A plugin
-rescan can keep old QML components cached; the installer verifies the running
-version after restarting the shell.
+`--reload` restarts omarchy-shell and verifies that the running plugin reports
+the installed version, since a plain plugin rescan can keep old QML components
+cached. The plugin directory is a symlink into this repo, so keep the clone
+where it is. After editing plugin code run the same command again.
 
-The native capsule includes a frosted material, illuminated bevels, glass buttons,
-spring transitions and actionable errors. App launches run in the background after onboarding; use
-`wispr-flow --show-hub` to open the main window. See the
-[material options and preview checks](app/docs/glass-capsule.md).
+Then tell Hyprland not to fade the bar's layer in and out (the glass animates
+itself). Copy the rule file into your Hyprland config and require it:
+
+```bash
+cp omarchy/hyprland-flowbar.lua ~/.config/hypr/wispr-flowbar.lua
+echo 'require("hypr.wispr-flowbar")' >> ~/.config/hypr/hyprland.lua
+hyprctl reload && hyprctl configerrors
+```
+
+The bar is liquid glass: it snapshots the desktop under it the instant before
+it appears and refracts that, so it needs no compositor blur and adapts to
+light or dark content on its own. App launches run in the background after
+onboarding; use `wispr-flow --show-hub` to open the main window. See the
+[material notes and preview checks](app/docs/glass-capsule.md).
 
 ### 6. Check
 
