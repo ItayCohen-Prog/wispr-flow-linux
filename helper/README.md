@@ -91,6 +91,6 @@ src/
 
 Clean-room reimplementation against a recovered IPC contract; ships no Wispr Flow
 proprietary code, and is released into the public domain under the
-[Unlicense](UNLICENSE). The app itself remains under its own terms — see the
+[Unlicense](UNLICENSE). The app itself remains under its own terms; see the
 [legal posture](https://github.com/wispr-flow-linux/wispr-flow-linux#legal-posture)
 in the main repo.

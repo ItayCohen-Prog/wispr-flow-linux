@@ -13,9 +13,9 @@ channel:
   the macOS/Windows helper, or improve packaging are always welcome. Open the
   PR; an issue isn't strictly required if the fix is small.
 - **Want a net-new feature?** Open an issue or discussion first. We're a
-  repackager plus a clean-room helper — see [What we accept](#what-we-accept).
+  repackager plus a clean-room helper; see [What we accept](#what-we-accept).
 - **Security concern?** Don't file a public issue. Use [SECURITY.md](SECURITY.md)
-  — GitHub Security Advisories route to @aaddrick privately.
+  GitHub Security Advisories route to the maintainers privately.
 
 ## Where to find what
 
@@ -40,12 +40,12 @@ I've scattered the docs across a few files. Here's the map:
 
 This repo is a **repackager** of the proprietary Wispr Flow Electron app. It
 pairs with a **clean-room Rust helper** that reimplements the one native
-capability Wispr Flow ships only for macOS/Windows — text injection into the
+capability Wispr Flow ships only for macOS/Windows, text injection into the
 focused app. The helper lives in the sibling `helper/` directory and the build
 stages it from `helper/target/release`. Both sides welcome:
 
 - Bug fixes against existing behaviour (packaging, launcher, helper, patches).
-- **Parity** with the macOS/Windows helper behaviour — closing gaps where the
+- **Parity** with the macOS/Windows helper behaviour, closing gaps where the
   Linux helper diverges from the documented IPC contract (`docs/reference/`).
 - Packaging, launcher, and `--doctor` fixes (new distro/compositor support,
   better diagnostics).
@@ -57,7 +57,7 @@ upstream release. That's a real maintenance cost, so open an issue before you
 invest in one.
 
 **Not accepted: package-hosting, release, or publishing infrastructure.** This
-repo is local-build-only by design — it ships no built packages, no APT/DNF
+repo is local-build-only by design. It ships no built packages, no APT/DNF
 repo, no GitHub Releases, and no publish workflows. Don't open PRs that
 reintroduce any of that.
 
@@ -65,7 +65,7 @@ reintroduce any of that.
 
 We patch the app's minified bundle and supply a Linux helper. We don't fix logic
 inside the proprietary app itself. So if a bug reproduces in Wispr Flow on
-macOS/Windows, it's an upstream bug — report it to
+macOS/Windows, it's an upstream bug. Report it to
 [Wispr Flow](https://wisprflow.ai), not here.
 
 | File here                                   | File upstream (Wispr)              |
@@ -79,7 +79,7 @@ macOS/Windows, it's an upstream bug — report it to
 
 1. Use the issue template, not freeform.
 2. Paste full `wispr-flow --doctor` output. This is the most-skipped step, and
-   it's the one I lean on most — it captures session type, `/dev/uinput` access,
+   it captures session type, `/dev/uinput` access,
    clipboard tooling and AT-SPI in one shot.
 3. Include Omarchy, Hyprland and Quickshell versions. In my experience
    most Linux-only bugs trace to one of these.
@@ -129,7 +129,7 @@ URLs, and alt text can run over when breaking them hurts readability.
 - Run `shellcheck` on touched scripts and the cargo gates on helper changes.
 - For packaging/launcher/patch changes, build locally and run the artifact's
   `wispr-flow --doctor`. See [docs/building.md](docs/building.md). **Do not run
-  `scripts/build-linux.sh` blindly** — its step 2 does `rm -rf build-linux/`,
+  `scripts/build-linux.sh` blindly**. Its step 2 does `rm -rf build-linux/`,
   which destroys the validated staged tree. I've nuked mine that way more than
   once.
 - Branch: `fix/123-description` or `feature/123-description`.
@@ -138,7 +138,7 @@ URLs, and alt text can run over when breaking them hurts readability.
 
 ## Letting maintainers edit your PR
 
-Leave **Allow edits by maintainers** checked when you open the PR — GitHub
+Leave **Allow edits by maintainers** checked when you open the PR. GitHub
 ticks it by default on cross-fork PRs. Here's why I ask. Sometimes a patch is
 95% there and the rest is a one-line tweak: a typo, a rebase, an 80-col wrap, a
 nudge to match the style guide. With that box checked I can just push the fix to
@@ -148,7 +148,7 @@ round trip. It's quicker for both of us.
 I won't rewrite your work behind your back. I'll keep it to small mechanical
 edits, and anything bigger I'll raise in a comment first. The box does need to
 stay on, though. If maintainer edits are off, the PR gets an automatic comment
-and is closed — flip **Allow edits by maintainers** back on and reopen it, and
+and is closed, flip **Allow edits by maintainers** back on and reopen it, and
 we pick right back up where we left off.
 
 ## AI-assisted contributions

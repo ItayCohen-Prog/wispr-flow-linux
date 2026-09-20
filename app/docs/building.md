@@ -55,7 +55,7 @@ build rather than silently skipping.
 | `--arch` | `amd64` `arm64` | Target architecture (overrides host detection). arm64 is wired through but not hardware-validated. |
 | `-c`, `--clean` | `yes` `no` | Remove intermediate build files when done (default `no`). |
 | `-r`, `--release-tag` | string | Optional tag embedded in the package version. |
-| `--test-flags` | — | Parse and print the resolved flags, then exit **without** building. |
+| `--test-flags` | (none) | Parse and print the resolved flags, then exit **without** building. |
 
 `build.sh` is a thin orchestrator over the staging engine
 (`scripts/build-linux.sh`) and the AppImage maker
@@ -81,7 +81,7 @@ Here's what the staging pipeline (`scripts/build-linux.sh`) does:
 1. **Extract** the Squirrel `.exe` with `7z` → `*-full.nupkg` → app payload under
    `lib/net45/` (`resources/app.asar`, native modules, `Release/`, `*.pak`).
 2. **Unpack** `app.asar` with `@electron/asar`.
-3. **Patch the main bundle** — `scripts/patches/helper-resolver.sh` adds a
+3. **Patch the main bundle.** `scripts/patches/helper-resolver.sh` adds a
    `'linux'` branch to the helper-path resolver so the app loads
    `<resourcesPath>/Release/wispr-flow-linux-helper`;
    `scripts/patches/mac-gates.sh` gates the macOS "move to Applications" guard to
@@ -91,7 +91,7 @@ Here's what the staging pipeline (`scripts/build-linux.sh`) does:
    `.node`; the build swaps in pinned, prebuilt linux `better_sqlite3.node` +
    `node_sqlite3.node` fetched and verified by
    `scripts/setup/fetch-native-bin.sh` (with an opt-in local from-source rebuild
-   — see below).
+   (see below).
 5. **Drop `win-ca`/`crypt32`** (Windows cert store; Linux uses the system CA
    bundle); keep the Jabra Linux ELF (already cross-platform).
 6. **Stage Linux Electron 42**, repack `app.asar`, and stage the full resources
@@ -117,7 +117,7 @@ you don't pick the runtime by hand.
 The helper is consumed like the native modules: a prebuilt release asset pinned
 in `helper-version.txt`. When `HELPER_BIN` is unset, staging auto-fetches that
 tag from the [helper repo](https://github.com/wispr-flow-linux/helper)'s
-releases into `helper-bin/` via `scripts/setup/fetch-helper-bin.sh` — no env
+releases into `helper-bin/` via `scripts/setup/fetch-helper-bin.sh`. No env
 var, no manual step.
 
 To use a local build instead (e.g. while hacking on the helper), point
@@ -135,14 +135,14 @@ packaging then refuses the helper-less tree.
 A fetched copy is stamped with its release tag (`helper-bin/.tag`), so when
 `helper-version.txt` is bumped the stale cache is refetched automatically on
 the next build. Offline, you can also pre-drop a binary at
-`helper-bin/wispr-flow-linux-helper` — an executable there without a stamp is
+`helper-bin/wispr-flow-linux-helper`. An executable there without a stamp is
 treated as a deliberate local drop and used as-is.
 
 ### Native sqlite modules (prebuilt, with an opt-in local rebuild)
 
 Electron 42 ships **V8 14.8 / Node 24.15**, and that combo is where this gets
 fiddly. `better-sqlite3-multiple-ciphers` **does not compile** against V8 14.8
-unpatched, and a binary's glibc floor is set by where it's built — so the port
+unpatched, and a binary's glibc floor is set by where it's built, so the port
 treats the two sqlite addons like the clean-room helper: built **once**, on an
 old-glibc base, and consumed as pinned, checksummed release assets.
 
@@ -151,13 +151,13 @@ Like the helper, the build + releases live in their **own repo**
 split out so these CI-consumed artifacts don't inflate the main project's
 Release download counts.
 
-- **Producer:** the **Build Native Modules** workflow in the `native-modules`
+- **Producer.** The Build Native Modules workflow in the `native-modules`
   repo rebuilds both addons on `manylinux_2_28` (glibc 2.28 floor) per arch,
   validates each under real Electron (ABI 146 + an encrypted-DB round-trip), and
   publishes them to the tag pinned in `native-modules-version.txt`. The actual
   build is `scripts/rebuild-native-modules.sh` (lockfile-pinned `npm ci`, the V8
   patch on a pristine checkout, isolated electron-gyp headers).
-- **Consumer:** the build fetches the matching pair via
+- **Consumer.** The build fetches the matching pair via
   `scripts/setup/fetch-native-bin.sh`, which verifies the SHA-256 **and** the
   provenance stamp (the asset's `patch_sha256` must equal this checkout's patch;
   ABI must be 146) before staging. CI hard-fails if the fetch fails.

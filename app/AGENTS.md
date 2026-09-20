@@ -5,15 +5,15 @@ reference; the documents it links to are the source of truth.
 
 ## Required reading
 
-- [`../README.md`](../README.md) — what this is, what it is not, and the
+- [`../README.md`](../README.md): what this is, what it is not, and the
   setup steps as actually run on Omarchy.
-- [`docs/reference/ipc-contract.md`](docs/reference/ipc-contract.md) — the IPC
+- [`docs/reference/ipc-contract.md`](docs/reference/ipc-contract.md): the IPC
   contract the clean-room helper implements.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — what is accepted, what goes upstream
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): what is accepted, what goes upstream
   to Wispr, the bash and Rust style requirements, the AI-attribution policy.
-- [`docs/index.md`](docs/index.md) — entry point for the rest of the docs.
-- [`docs/styleguides/bash_styleguide.md`](docs/styleguides/bash_styleguide.md)
-  — shell conventions. Tabs, 80 cols, `[[ ]]`, no `set -e`.
+- [`docs/index.md`](docs/index.md): entry point for the rest of the docs.
+- [`docs/styleguides/bash_styleguide.md`](docs/styleguides/bash_styleguide.md):
+  shell conventions. Tabs, 80 cols, `[[ ]]`, no `set -e`.
 
 ## Project overview
 
@@ -21,15 +21,15 @@ An **unofficial** Linux port of the proprietary **Wispr Flow** voice-dictation
 app (Electron 42, shipped as a Squirrel Windows installer), targeting **only
 Omarchy** (Arch Linux, Hyprland, omarchy-shell). Three parts, one repo:
 
-1. `app/` — the repackaging pipeline: extract the Windows installer, patch the
+1. `app/`, the repackaging pipeline: extract the Windows installer, patch the
    minified bundle for Linux, stage a Linux Electron and the prebuilt native
    sqlite modules, and produce an AppImage that `packaging/arch/PKGBUILD`
    installs.
-2. `helper/` — the clean-room Rust helper that injects text into the focused
+2. `helper/`, the clean-room Rust helper that injects text into the focused
    app over `/dev/uinput`, reads the clipboard over `ext-data-control`,
    captures push-to-talk from evdev, and tracks focus over AT-SPI. Built from
    the documented IPC contract; contains no Wispr Flow code.
-3. `app/omarchy/plugins/wispr.flowbar/` — the omarchy-shell (Quickshell)
+3. `app/omarchy/plugins/wispr.flowbar/`, the omarchy-shell (Quickshell)
    plugin that draws the Flow Bar as liquid glass on a layer-shell surface,
    fed by the app over a Unix socket.
 
@@ -39,21 +39,21 @@ or Nix packaging, no X11/XWayland mode, no GNOME or KDE backends.
 
 ## Layout (app/)
 
-- `build.sh` — orchestrator: flags, host detection, dependency check,
+- `build.sh`: the orchestrator. Flags, host detection, dependency check,
   installer download, staging, AppImage packaging. `--test-flags` dry run.
-- `scripts/build-linux.sh` — the staging pipeline: extract, patch, stage
+- `scripts/build-linux.sh`: the staging pipeline. Extract, patch, stage
   native modules, repack `app.asar`, verify markers.
-- `scripts/patches/` — one script per bundle patch (see `scripts/README.md`);
+- `scripts/patches/`: one script per bundle patch (see `scripts/README.md`);
   `verify-patches.sh` greps the repacked asar for every marker.
-- `scripts/packaging/appimage.sh` — writes the AppDir, `AppRun` launcher,
+- `scripts/packaging/appimage.sh`: writes the AppDir, `AppRun` launcher,
   desktop file and icons, then runs `appimagetool`.
-- `scripts/launcher-common.sh`, `scripts/doctor.sh` — the runtime launcher
+- `scripts/launcher-common.sh`, `scripts/doctor.sh`: the runtime launcher
   library and `wispr-flow --doctor`, both shipped inside the AppImage.
-- `scripts/omarchy/install-flowbar-plugin.sh` — links and enables the plugin,
+- `scripts/omarchy/install-flowbar-plugin.sh`: links and enables the plugin,
   `--reload` restarts the shell and verifies the running version.
-- `omarchy/` — the plugin, its preview harness and the Hyprland rule file.
-- `tests/` — bats, Node, QML and artifact tests (`tests/README.md`).
-- `docs/` — configuration, troubleshooting, glass material notes, decisions,
+- `omarchy/`: the plugin, its preview harness and the Hyprland rule file.
+- `tests/`: bats, Node, QML and artifact tests (`tests/README.md`).
+- `docs/`: configuration, troubleshooting, glass material notes, decisions,
   learnings, the IPC contract.
 
 ## Code style

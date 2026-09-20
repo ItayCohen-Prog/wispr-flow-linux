@@ -135,7 +135,7 @@ private compositor hooks. Plugin GPU costs, energy use and frame pacing under
 heavy desktop load remain unmeasured. A zero CPU sample means no measurable
 process CPU ticks in that interval, not a guarantee of zero resource use.
 
-The standalone preview/Qt process used roughly 177–210 MiB RSS across the runs.
+The standalone preview/Qt process used roughly 177 to 210 MiB RSS across the runs.
 That includes Qt, the demo window and rendering buffers. It is **not** the added
 memory cost of loading this component into the already-running Omarchy shell.
 

@@ -1,4 +1,4 @@
-# Wispr Flow — Linux Phase-0 packaging
+# Linux packaging scripts
 
 A local build pipeline that repackages the proprietary Wispr Flow Windows app
 (Electron 42 / electron-forge, Squirrel-packaged) so it launches on Linux with
@@ -47,7 +47,7 @@ Wispr Flow Setup.exe ──7z──▶ *.nupkg ──7z──▶ lib/net45/{reso
                                           build-linux/stage/  (resources tree)
 ```
 
-## The one mandatory app change — the helper-path resolver
+## The one mandatory app change: the helper-path resolver
 
 Here's the thing I had to fix. The shipped main bundle resolves the native
 helper with a **two-way switch and no Linux case**
@@ -68,7 +68,7 @@ Windows branch, builds a `.exe` path with backslashes, `existsSync` fails, and
 the whole text-injection feature dies on you.
 
 `patches/helper-resolver.sh` makes **two surgical edits**:
-1. `const s` → `let s` (so the override can reassign — `s` is `const` in the
+1. `const s` → `let s` (so the override can reassign; `s` is `const` in the
    shipped code; reassigning would otherwise throw *Assignment to constant
    variable*).
 2. Inserts a Linux override right before the `existsSync` guard:
@@ -103,9 +103,9 @@ leave the mac/win paths untouched, so the patch can't regress those platforms.
 | 1. Extract | ✅ done | Result in `extract/` (Track 1). |
 | 2. Unpack app.asar | ✅ auto* | *needs `@electron/asar` (npx fetch). The already-unpacked `extract/app/` tree lets you skip the round-trip for a smoke test. |
 | 3. Patch resolver | ✅ auto | Verified: passes `node --check`, idempotent, `.orig` backup. |
-| 4. Rebuild sqlite natives | ⚠️ MANUAL | `better-sqlite3-multiple-ciphers` + `sqlite3` ship as Windows `.node`; must rebuild for linux-x64 Electron 42 ABI. Complication: bsqlite-mc is pinned to a **yarn patch** in `package.json` — the rebuild must apply it. Without this the app launches but DB-backed features fail. |
+| 4. Rebuild sqlite natives | ⚠️ MANUAL | `better-sqlite3-multiple-ciphers` + `sqlite3` ship as Windows `.node`; must rebuild for linux-x64 Electron 42 ABI. Complication: bsqlite-mc is pinned to a **yarn patch** in `package.json`, and the rebuild must apply it. Without this the app launches but DB-backed features fail. |
 | 5. Drop win-ca/crypt32 | ✅ auto | Removes `crypt32-{ia32,x64}.node`; Linux uses the system CA bundle. Jabra Linux ELF is kept (already cross-platform). |
-| 6. Stage Linux Electron 42 | ⚠️ MANUAL | One hard network dep. Electron 42 is a normal upstream release with linux-x64/arm64 artifacts, so availability is expected — **verify the exact patch version (42.3.0) is downloadable**. |
+| 6. Stage Linux Electron 42 | ⚠️ MANUAL | One hard network dep. Electron 42 is a normal upstream release with linux-x64/arm64 artifacts, so availability is expected. Verify the exact patch version (42.3.0) is downloadable. |
 | 7. Copy helper + repack | ✅ auto | Helper staged at `Release/wispr-flow-linux-helper` (0755). Repack needs `@electron/asar`. |
 | 8. Package .AppImage | ⚠️ MANUAL | `build.sh` runs `scripts/packaging/appimage.sh` after staging. |
 

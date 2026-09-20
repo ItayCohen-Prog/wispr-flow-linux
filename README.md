@@ -9,6 +9,11 @@ port [wispr-flow-linux](https://github.com/wispr-flow-linux/wispr-flow-linux)
 and its Rust [helper](https://github.com/wispr-flow-linux/helper), kept together
 in one repo so a single clone gives you a working setup.
 
+This is an unofficial port. It is not affiliated with or endorsed by Wispr or
+by Omarchy. Wispr Flow does not support Linux; for the official app and
+support see [wisprflow.ai](https://wisprflow.ai). Nothing proprietary is in
+this repository: the build downloads Wispr's own installer on your machine.
+
 ![The Flow Bar listening, as liquid glass over light content](docs/media/flow-bar-listening.png)
 
 ![The same bar over dark content](docs/media/flow-bar-dark.png)

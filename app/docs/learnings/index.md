@@ -1,6 +1,6 @@
 [< Back to docs index](../index.md)
 
-# Learnings — subsystem deep-dives
+# Learnings
 
 The non-obvious mechanics behind the helper and the packaging pipeline, most
 of them inherited from the upstream port. Each page digs into one mechanic and

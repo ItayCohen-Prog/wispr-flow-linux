@@ -69,7 +69,7 @@ ShellRoot {
               demo.send("notification:clear", null)
               if (modelData === "Error" || modelData === "Long message") {
                 demo.send("status:dictationStatus", "idle")
-                demo.send("notification:show", {type:"AudioQualityIssue",title:"We couldn’t hear you clearly",body:modelData === "Long message" ? "Your microphone level is too low. Check the input device and move closer to the microphone, then try dictating again. This message stays readable as the capsule expands." : "Check your microphone and try again.",timeout:30000,callbackOperationId:"preview",actions:[{text:"Try again",callback:"Retry",style:"primary"},{text:"Dismiss",callback:"Dismiss"}]})
+                demo.send("notification:show", {type:"AudioQualityIssue",title:"We couldn't hear you clearly",body:modelData === "Long message" ? "Your microphone level is too low. Check the input device and move closer to the microphone, then try dictating again. This message stays readable as the capsule expands." : "Check your microphone and try again.",timeout:30000,callbackOperationId:"preview",actions:[{text:"Try again",callback:"Retry",style:"primary"},{text:"Dismiss",callback:"Dismiss"}]})
               } else demo.send("status:dictationStatus", modelData === "Listen" ? "listening" : modelData === "Process" ? "processing" : "idle")
             }
           }

@@ -3,7 +3,7 @@
   "id": "wispr.flowbar",
   "name": "Wispr Flow bar",
   "version": "0.4.0",
-  "author": "wispr-flow-linux",
+  "author": "Webivize",
   "license": "Unlicense",
   "description": "Native layer-shell Flow Bar for Wispr Flow on Omarchy: draws the dictation pill and notifications from the app's status IPC over a Unix socket.",
   "kinds": [
