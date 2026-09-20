@@ -10,8 +10,11 @@ Item {
   property real strokeWidth: 2.2
   implicitWidth: 12; implicitHeight: 12
   Shape {
+    id: shape
     anchors.fill: parent
-    preferredRendererType: Shape.CurveRenderer
+    // The curve renderer (Qt 6.6+) antialiases the strokes; older Qt
+    // draws them with the geometry renderer.
+    Component.onCompleted: if (shape.preferredRendererType !== undefined) shape.preferredRendererType = Shape.CurveRenderer
     ShapePath {
       strokeColor: icon.color
       strokeWidth: icon.strokeWidth
