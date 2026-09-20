@@ -36,7 +36,8 @@ setup() {
 	# Clear display / session vars so host state can't leak into tests.
 	unset DISPLAY
 	unset WAYLAND_DISPLAY
-	unset WISPR_USE_WAYLAND
+	unset WISPR_NATIVE_FLOWBAR
+	unset WISPR_FLOWBAR_SOCKET
 	unset WISPR_DISABLE_GPU
 	unset XDG_CURRENT_DESKTOP
 	unset XDG_SESSION_TYPE
@@ -130,7 +131,7 @@ teardown() {
 	WAYLAND_DISPLAY='wayland-0'
 	DISPLAY=':0'
 	XDG_CURRENT_DESKTOP='KDE'
-	WISPR_USE_WAYLAND='1'
+	WISPR_NATIVE_FLOWBAR='1'
 	WISPR_DISABLE_GPU='1'
 	log_session_env
 
@@ -141,7 +142,7 @@ teardown() {
 	[[ "${lines[2]}" == '  WAYLAND_DISPLAY=wayland-0' ]]
 	[[ "${lines[3]}" == '  DISPLAY=:0' ]]
 	[[ "${lines[4]}" == '  XDG_CURRENT_DESKTOP=KDE' ]]
-	[[ "${lines[5]}" == '  WISPR_USE_WAYLAND=1' ]]
+	[[ "${lines[5]}" == '  WISPR_NATIVE_FLOWBAR=1' ]]
 	[[ "${lines[6]}" == '  WISPR_DISABLE_GPU=1' ]]
 	[[ "${lines[7]}" == '}' ]]
 }
@@ -157,7 +158,7 @@ teardown() {
 	[[ "${lines[2]}" == '  WAYLAND_DISPLAY=' ]]
 	[[ "${lines[3]}" == '  DISPLAY=' ]]
 	[[ "${lines[4]}" == '  XDG_CURRENT_DESKTOP=' ]]
-	[[ "${lines[5]}" == '  WISPR_USE_WAYLAND=' ]]
+	[[ "${lines[5]}" == '  WISPR_NATIVE_FLOWBAR=' ]]
 	[[ "${lines[6]}" == '  WISPR_DISABLE_GPU=' ]]
 }
 
@@ -192,131 +193,60 @@ teardown() {
 }
 
 # =============================================================================
-# detect_display_backend
-# =============================================================================
-
-@test "detect_display_backend: X11 session sets is_wayland=false" {
-	DISPLAY=":0"
-	detect_display_backend
-	[[ $is_wayland == false ]]
-}
-
-@test "detect_display_backend: Wayland session sets is_wayland=true" {
-	WAYLAND_DISPLAY="wayland-0"
-	detect_display_backend
-	[[ $is_wayland == true ]]
-}
-
-@test "detect_display_backend: no display vars defaults to is_wayland=false" {
-	detect_display_backend
-	[[ $is_wayland == false ]]
-}
-
-@test "detect_display_backend: WAYLAND_DISPLAY wins even with DISPLAY also set" {
-	DISPLAY=":0"
-	WAYLAND_DISPLAY="wayland-0"
-	detect_display_backend
-	[[ $is_wayland == true ]]
-}
-
-# =============================================================================
 # build_electron_args
 # =============================================================================
 
-@test "build_electron_args: includes --class=Wispr Flow" {
-	is_wayland=false
+@test "build_electron_args: includes --class=Wispr Flow and --no-sandbox" {
+	WAYLAND_DISPLAY='wayland-0'
+	WISPR_NATIVE_FLOWBAR='1'
 	setup_logging
-	build_electron_args rpm
+	build_electron_args
 	has_electron_arg '--class=Wispr Flow'
-}
-
-@test "build_electron_args: appimage adds --no-sandbox" {
-	is_wayland=false
-	setup_logging
-	build_electron_args appimage
 	has_electron_arg '--no-sandbox'
 }
 
-@test "build_electron_args: rpm does NOT add --no-sandbox" {
-	is_wayland=false
-	setup_logging
-	build_electron_args rpm
-	# shellcheck disable=SC2314 # last command in test, ! works correctly
-	! has_electron_arg '--no-sandbox'
-}
-
-@test "build_electron_args: deb does NOT add --no-sandbox" {
-	is_wayland=false
-	setup_logging
-	build_electron_args deb
-	# shellcheck disable=SC2314
-	! has_electron_arg '--no-sandbox'
-}
-
 @test "build_electron_args: WISPR_DISABLE_GPU=1 adds --disable-gpu" {
-	is_wayland=false
+	WAYLAND_DISPLAY='wayland-0'
+	WISPR_NATIVE_FLOWBAR='1'
 	WISPR_DISABLE_GPU=1
 	setup_logging
-	build_electron_args rpm
+	build_electron_args
 	has_electron_arg '--disable-gpu'
 	has_electron_arg '--disable-software-rasterizer'
 }
 
 @test "build_electron_args: no GPU flags without WISPR_DISABLE_GPU" {
-	is_wayland=false
+	WAYLAND_DISPLAY='wayland-0'
+	WISPR_NATIVE_FLOWBAR='1'
 	setup_logging
-	build_electron_args rpm
+	build_electron_args
 	# shellcheck disable=SC2314
 	! has_electron_arg '--disable-gpu'
 }
 
-@test "build_electron_args: X11 session adds no Wayland flags" {
-	is_wayland=false
+@test "build_electron_args: X11-only session is refused with a reason" {
+	DISPLAY=':0'
+	WISPR_NATIVE_FLOWBAR='1'
 	setup_logging
-	build_electron_args deb
-	# shellcheck disable=SC2314
-	! has_electron_arg '--ozone-platform=wayland'
+	run build_electron_args
+	[[ $status -eq 1 ]]
+	build_electron_args || true
+	[[ $launch_error == *'Wayland session'* ]]
+	grep -q 'Wayland session' "$log_file"
 }
 
-@test "build_electron_args: Wayland defaults Electron to XWayland" {
-	# The physical Flow Bar surface crop is validated on XWayland.
-	is_wayland=true
+@test "build_electron_args: native Wayland flags and GDK_BACKEND on success" {
+	WAYLAND_DISPLAY='wayland-0'
+	WISPR_NATIVE_FLOWBAR='1'
 	setup_logging
-	build_electron_args deb
-	has_electron_arg '--ozone-platform=x11'
-	# shellcheck disable=SC2314
-	! has_electron_arg '--ozone-platform=wayland'
-}
-
-@test "build_electron_args: WISPR_USE_WAYLAND=1 adds native Wayland flags" {
-	is_wayland=true
-	WISPR_USE_WAYLAND=1
-	setup_logging
-	build_electron_args deb
+	build_electron_args
 	has_electron_arg '--ozone-platform=wayland'
-	# shellcheck disable=SC2314
-	! has_electron_arg '--ozone-platform=x11'
 	has_electron_arg '--enable-wayland-ime'
 	has_electron_arg '--wayland-text-input-version=3'
 	has_electron_arg '*WaylandWindowDecorations*'
-}
-
-@test "build_electron_args: WISPR_USE_WAYLAND=1 exports GDK_BACKEND=wayland" {
-	is_wayland=true
-	WISPR_USE_WAYLAND=1
-	setup_logging
-	build_electron_args deb
-	[[ $GDK_BACKEND == 'wayland' ]]
-}
-
-@test "build_electron_args: WISPR_USE_WAYLAND ignored on X11 (is_wayland=false)" {
-	# The native-Wayland flags only apply on an actual Wayland session.
-	is_wayland=false
-	WISPR_USE_WAYLAND=1
-	setup_logging
-	build_electron_args deb
 	# shellcheck disable=SC2314
-	! has_electron_arg '--ozone-platform=wayland'
+	! has_electron_arg '--ozone-platform=x11'
+	[[ $GDK_BACKEND == 'wayland' ]]
 }
 
 # =============================================================================
@@ -387,7 +317,7 @@ teardown() {
 }
 
 # =============================================================================
-# native Flow Bar auto-detection
+# native Flow Bar socket gate
 # =============================================================================
 
 make_flowbar_socket() {
@@ -396,50 +326,36 @@ make_flowbar_socket() {
 		"$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock"
 }
 
-@test "build_electron_args: native Flow Bar socket switches to Wayland" {
+@test "build_electron_args: plugin socket enables the native Flow Bar" {
 	setup_logging
 	WAYLAND_DISPLAY='wayland-0'
 	XDG_RUNTIME_DIR="$TEST_TMP/rt"
-	unset WISPR_NATIVE_FLOWBAR
 	make_flowbar_socket
-	detect_display_backend
-	build_electron_args appimage
+	build_electron_args
 	[[ " ${electron_args[*]} " == *' --ozone-platform=wayland '* ]]
 	[[ "$WISPR_NATIVE_FLOWBAR" == '1' ]]
 	[[ "$WISPR_FLOWBAR_SOCKET" == "$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock" ]]
 	grep -q 'Native Flow Bar socket present' "$log_file"
 }
 
-@test "build_electron_args: WISPR_NATIVE_FLOWBAR=0 keeps XWayland despite socket" {
-	setup_logging
-	WAYLAND_DISPLAY='wayland-0'
-	XDG_RUNTIME_DIR="$TEST_TMP/rt"
-	make_flowbar_socket
-	WISPR_NATIVE_FLOWBAR='0'
-	detect_display_backend
-	build_electron_args appimage
-	[[ " ${electron_args[*]} " == *' --ozone-platform=x11 '* ]]
-	[[ -z "${WISPR_FLOWBAR_SOCKET:-}" ]]
-}
-
-@test "build_electron_args: WISPR_NATIVE_FLOWBAR=1 forces Wayland without a socket" {
+@test "build_electron_args: WISPR_NATIVE_FLOWBAR=1 starts without a socket" {
 	setup_logging
 	WAYLAND_DISPLAY='wayland-0'
 	XDG_RUNTIME_DIR="$TEST_TMP/rt"
 	WISPR_NATIVE_FLOWBAR='1'
-	detect_display_backend
-	build_electron_args appimage
+	build_electron_args
 	[[ " ${electron_args[*]} " == *' --ozone-platform=wayland '* ]]
 	[[ "$WISPR_FLOWBAR_SOCKET" == "$TEST_TMP/rt/wispr-flow/flowbar.sock" ]]
 }
 
-@test "build_electron_args: no socket keeps XWayland" {
+@test "build_electron_args: no socket refuses to start and names the installer" {
 	setup_logging
 	WAYLAND_DISPLAY='wayland-0'
 	XDG_RUNTIME_DIR="$TEST_TMP/rt"
-	unset WISPR_NATIVE_FLOWBAR
-	detect_display_backend
-	build_electron_args appimage
-	[[ " ${electron_args[*]} " == *' --ozone-platform=x11 '* ]]
-	[[ -z "${WISPR_NATIVE_FLOWBAR:-}" ]]
+	run build_electron_args
+	[[ $status -eq 1 ]]
+	build_electron_args || true
+	[[ $launch_error == *'install-flowbar-plugin.sh'* ]]
+	[[ -z "${WISPR_FLOWBAR_SOCKET:-}" ]]
+	grep -q 'Flow Bar plugin is not running' "$log_file"
 }

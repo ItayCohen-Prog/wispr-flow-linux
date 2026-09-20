@@ -172,7 +172,7 @@ validate_app_contents() {
 #     label        human name for pass/fail messages
 #     pkill_match  pattern for the pkill -f child sweep (may be empty)
 #     run_as       unprivileged user to drop to, or '' to run as-is. The
-#                  deb/rpm install chrome-sandbox setuid-root and the launcher
+#                  installed packages ship chrome-sandbox setuid-root and the launcher
 #                  does NOT pass --no-sandbox, so Electron refuses to run as
 #                  root: a root container must drop privileges to exercise the
 #                  real setuid sandbox path.

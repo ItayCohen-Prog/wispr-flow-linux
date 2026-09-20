@@ -3,7 +3,7 @@
 # Doctor Diagnostics for Wispr Flow
 #
 # Sourced by: scripts/launcher-common.sh (in turn sourced by the per-package
-# /usr/bin/wispr-flow launcher — deb / rpm / AppImage).
+# AppImage's AppRun launcher).
 #
 # Provides: run_doctor (the `wispr-flow --doctor` entry point) plus its
 # internal helpers. Self-contained — no dependency on launcher-common.sh
@@ -11,7 +11,7 @@
 #
 # Scoped to Wispr Flow's load-bearing runtime requirements: /dev/uinput
 # write access (keystroke injection), input-group fallback, wl-clipboard /
-# xclip-xsel, AT-SPI accessibility, the GNOME Shell window-bridge extension
+# AT-SPI accessibility, the Flow Bar plugin socket,
 # (relogin caveat), the helper-binary launch probe, and recent crashes.
 #
 # To add a check: define `_check_<name>`, call it from run_doctor, and use
@@ -19,9 +19,6 @@
 # run_doctor) which becomes the exit status.
 #===============================================================================
 
-# GNOME Shell extension UUID, must match the helper's bundled
-# gnome_extension/metadata.json (org.wispr.flow.WindowBridge bridge).
-_WISPR_GNOME_EXT_UUID='wispr-flow-window-bridge@wispr.flow'
 
 # Color helpers (disabled when stdout is not a terminal).
 _doctor_colors() {
@@ -60,33 +57,39 @@ _doctor_config_dir() {
 _doctor_check_display() {
 	if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
 		_pass "Display server: Wayland (WAYLAND_DISPLAY=$WAYLAND_DISPLAY)"
-		if [[ ${WISPR_USE_WAYLAND:-} == '1' ]]; then
-			_info 'Mode: native Wayland forced (WISPR_USE_WAYLAND=1)'
-		else
-			_info 'Mode: XWayland UI backend (default; Flow Bar click-through enabled)'
-		fi
+		_info 'Mode: native Wayland; the Flow Bar is drawn by the omarchy-shell plugin'
 	elif [[ -n ${DISPLAY:-} ]]; then
-		_pass "Display server: X11 (DISPLAY=$DISPLAY)"
+		_fail "Display server: X11 only (DISPLAY=$DISPLAY); this build needs a Wayland session"
+		_info 'Fix: log in to Hyprland (Omarchy) and run Wispr Flow there'
+		return
 	else
 		_fail 'No display server detected' \
 			'(DISPLAY and WAYLAND_DISPLAY are unset)'
-		_info 'Fix: run from within a Wayland or X11 session, not a TTY'
+		_info 'Fix: run from within a Wayland session, not a TTY'
 		return
 	fi
 
-	# Compositor family from XDG_CURRENT_DESKTOP (may be colon-separated,
-	# e.g. "ubuntu:GNOME"). Lowercase for matching.
+	# Compositor from XDG_CURRENT_DESKTOP (may be colon-separated).
 	local desktop="${XDG_CURRENT_DESKTOP:-unknown}"
-	local d="${desktop,,}"
-	local family
-	case "$d" in
-		*kde*|*plasma*) family='KDE Plasma (KWin)' ;;
-		*gnome*)        family='GNOME (Mutter)' ;;
-		*sway*|*hyprland*|*wlroots*|*niri*|*river*)
-			family='wlroots-based' ;;
-		*) family='other / unknown' ;;
+	case "${desktop,,}" in
+		*hyprland*) _info "Desktop: $desktop" ;;
+		*) _warn "Desktop: $desktop (only Hyprland on Omarchy is tested)" ;;
 	esac
-	_info "Desktop: $desktop  [$family]"
+}
+
+#------------------------------------------------------------------------------
+# Native Flow Bar — the omarchy-shell plugin must be serving its socket, or the
+# launcher refuses to start.
+#------------------------------------------------------------------------------
+_doctor_check_flowbar_socket() {
+	local sock="${XDG_RUNTIME_DIR:-/tmp}/wispr-flow/flowbar.sock"
+	if [[ -S $sock ]]; then
+		_pass "Flow Bar plugin: socket present ($sock)"
+	else
+		_fail "Flow Bar plugin: no socket at $sock"
+		_info 'The omarchy-shell plugin draws the Flow Bar; without it Wispr Flow will not start.'
+		_info 'Fix: app/scripts/omarchy/install-flowbar-plugin.sh --reload  (from the repo clone)'
+	fi
 }
 
 #------------------------------------------------------------------------------
@@ -178,31 +181,12 @@ _doctor_check_input_read() {
 # Clipboard tools — hard requirement on Wayland (paste/selection).
 #------------------------------------------------------------------------------
 _doctor_check_clipboard() {
-	if [[ -n ${WAYLAND_DISPLAY:-} ]]; then
-		if command -v wl-copy &>/dev/null && command -v wl-paste &>/dev/null; then
-			_pass 'Clipboard: wl-copy and wl-paste present (Wayland)'
-		else
-			_fail 'Clipboard: wl-clipboard missing (wl-copy / wl-paste)'
-			_info 'Wayland paste and selection capture require it.'
-			_info 'Fix: install the "wl-clipboard" package'
-		fi
-		# X11 fallback tools are still useful under XWayland; note only.
-		if command -v xclip &>/dev/null || command -v xsel &>/dev/null; then
-			_info 'XWayland fallback: xclip/xsel also present'
-		fi
-		return
-	fi
-
-	# X11 session.
-	if command -v xclip &>/dev/null || command -v xsel &>/dev/null; then
-		local tools=()
-		command -v xclip &>/dev/null && tools+=('xclip')
-		command -v xsel &>/dev/null && tools+=('xsel')
-		_pass "Clipboard: ${tools[*]} present (X11)"
+	if command -v wl-copy &>/dev/null && command -v wl-paste &>/dev/null; then
+		_pass 'Clipboard: wl-copy and wl-paste present'
 	else
-		_fail 'Clipboard: neither xclip nor xsel found (X11)'
-		_info 'X11 paste and selection capture require one of them.'
-		_info 'Fix: install "xclip" or "xsel"'
+		_fail 'Clipboard: wl-clipboard missing (wl-copy / wl-paste)'
+		_info 'Paste and selection capture require it.'
+		_info 'Fix: sudo pacman -S wl-clipboard'
 	fi
 }
 
@@ -246,42 +230,6 @@ _doctor_check_atspi() {
 		_warn 'AT-SPI: accessibility state unknown (a11y bus not reachable)'
 		_info 'The helper enables accessibility at runtime; this is usually fine.'
 	fi
-}
-
-#------------------------------------------------------------------------------
-# GNOME Shell extension — only relevant on GNOME. Relogin caveat.
-#------------------------------------------------------------------------------
-_doctor_check_gnome_extension() {
-	local desktop="${XDG_CURRENT_DESKTOP:-}"
-	[[ ${desktop,,} == *gnome* ]] || return 0
-
-	local ext_base="${XDG_DATA_HOME:-$HOME/.local/share}/gnome-shell/extensions"
-	local ext_dir="$ext_base/$_WISPR_GNOME_EXT_UUID"
-
-	if [[ ! -d $ext_dir ]]; then
-		_info "GNOME extension: not yet installed ($_WISPR_GNOME_EXT_UUID)"
-		_info 'The helper installs it on first run, then asks you to re-login.'
-		return
-	fi
-
-	# Installed on disk. Is it actually loaded/active in the running shell?
-	local state=''
-	if command -v gnome-extensions &>/dev/null; then
-		state=$(gnome-extensions info "$_WISPR_GNOME_EXT_UUID" 2>/dev/null \
-			| awk -F': ' '/State:/ {print $2; exit}')
-	fi
-
-	case "$state" in
-		ACTIVE|ENABLED)
-			_pass "GNOME extension: active ($_WISPR_GNOME_EXT_UUID)" ;;
-		'')
-			_warn "GNOME extension: installed but state unknown"
-			_info 'If active-app detection is wrong, log out and back in.' ;;
-		*)
-			_warn "GNOME extension: installed but not active (state=$state)"
-			_info 'GNOME scans extensions only at login.' \
-				'Log out and back in to activate it.' ;;
-	esac
 }
 
 #------------------------------------------------------------------------------
@@ -427,40 +375,6 @@ _doctor_check_electron() {
 }
 
 #------------------------------------------------------------------------------
-# chrome-sandbox — must be setuid-root (4755, owner root) on deb/rpm so Electron
-# runs sandboxed. Absent on AppImage (which launches with --no-sandbox). A
-# sandbox that lost its setuid bit makes Electron refuse to start or run
-# unsandboxed, so a clean "all passed" without this check is misleading.
-#------------------------------------------------------------------------------
-_doctor_check_sandbox() {
-	local electron_path="${1:-}"
-	# AppImages launch with --no-sandbox (squashfs can't carry a setuid bit), so
-	# the bundled chrome-sandbox is intentionally not setuid there. The AppImage
-	# runtime exports APPIMAGE; treat that as "sandbox perms don't apply".
-	if [[ -n ${APPIMAGE:-} ]]; then
-		_info 'chrome-sandbox: AppImage runs with --no-sandbox (setuid not required)'
-		return
-	fi
-	local sandbox_path=''
-	[[ -n $electron_path ]] && sandbox_path="$(dirname "$electron_path")/chrome-sandbox"
-	if [[ -z $sandbox_path || ! -f $sandbox_path ]]; then
-		_warn 'chrome-sandbox: not found (expected for AppImage / --no-sandbox)'
-		return
-	fi
-	local perms owner
-	perms=$(stat -c '%a' "$sandbox_path" 2>/dev/null || echo '?')
-	owner=$(stat -c '%U' "$sandbox_path" 2>/dev/null || echo '?')
-	if [[ $perms == '4755' && $owner == 'root' ]]; then
-		_pass "chrome-sandbox: setuid-root OK ($sandbox_path)"
-	else
-		_fail "chrome-sandbox: perms=$perms owner=$owner (need 4755 root)"
-		_info 'Electron may refuse to start or run unsandboxed.'
-		_info "Fix: sudo chown root:root '$sandbox_path'"
-		_info "     sudo chmod 4755 '$sandbox_path'"
-	fi
-}
-
-#------------------------------------------------------------------------------
 # Desktop entry + free disk on the config partition — cheap install-integrity
 # checks. Out-of-disk is a known Chromium failure mode (blank window / profile
 # corruption) that is otherwise invisible.
@@ -519,6 +433,10 @@ run_doctor() {
 	_doctor_check_display
 	echo
 
+	echo -e "${_bold}Native Flow Bar${_reset}"
+	_doctor_check_flowbar_socket
+	echo
+
 	echo -e "${_bold}Text Injection (uinput)${_reset}"
 	_doctor_check_uinput
 	_doctor_check_input_group
@@ -536,19 +454,9 @@ run_doctor() {
 	_doctor_check_atspi
 	echo
 
-	# GNOME-only section: skip the header entirely off GNOME to avoid a
-	# confusing empty block (KDE/wlroots use the in-process KWin/AT-SPI
-	# bridges instead of the Shell extension).
-	if [[ ${desktop,,} == *gnome* ]]; then
-		echo -e "${_bold}GNOME Window Bridge${_reset}"
-		_doctor_check_gnome_extension
-		echo
-	fi
-
 	echo -e "${_bold}Helper & Runtime${_reset}"
 	_doctor_check_helper "$helper_path"
 	_doctor_check_electron "$electron_path"
-	_doctor_check_sandbox "$electron_path"
 	_doctor_check_desktop_entry
 	_doctor_check_disk_space
 	_doctor_check_singleton_lock

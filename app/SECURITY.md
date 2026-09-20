@@ -13,8 +13,8 @@ proprietary Wispr Flow Electron app. The boundary matters, so here's the map.
 
 | Area | In scope | Out of scope |
 |------|----------|--------------|
-| Rust helper ([wispr-flow-linux/helper](https://github.com/wispr-flow-linux/helper), pinned via `helper-version.txt`) | ✅ injection backends, IPC handling, uinput/clipboard/AT-SPI surface — tracked in that repo | — |
-| Packaging (`scripts/packaging/`) | ✅ deb / rpm / AppImage makers, udev rule, file perms | — |
+| Rust helper (`helper/`) | ✅ injection backend, IPC handling, uinput/clipboard/AT-SPI surface | — |
+| Packaging (`scripts/packaging/`, `packaging/arch/`) | ✅ AppImage maker, Arch PKGBUILD, udev rule, file perms | — |
 | Launcher & doctor (`scripts/launcher-common.sh`, `scripts/doctor.sh`) | ✅ the `wispr-flow --doctor` surface, lock handling, the launcher rename | — |
 | App patches (`scripts/patches/`) | ✅ `helper-resolver.sh`, `mac-gates.sh`, the V8/sqlite patch | — |
 | CI (`.github/workflows/`) | ✅ the lint + unit-test gate workflows, secret handling | — |
@@ -53,7 +53,7 @@ real bug, and it's in scope.
 ## What to include in a report
 
 - Reproducer: commands, environment, distro / desktop / session type
-  (Wayland/X11).
+  (Wayland).
 - Output of `wispr-flow --doctor` if relevant.
 - Affected version(s) — the release tag you installed from (or
   `git describe --tags`), and the bundled Wispr Flow app version.

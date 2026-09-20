@@ -292,12 +292,6 @@ step3_patch_bundle() {
     auto "Running linux-deeplink.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-deeplink.sh" "$target_bundle" \
       || warn "Deep-link patch failed -- see linux-deeplink.sh output above."
-    # Physically crop the XWayland status surface to renderer-derived visible
-    # bounds. The window remains unmapped while both the Flow Bar and its
-    # notifications are idle, so no transparent rectangle can consume input.
-    auto "Running linux-flowbar-shape.sh on $target_bundle"
-    bash "$SCRIPT_DIR/patches/linux-flowbar-shape.sh" "$target_bundle" \
-      || warn "Flow Bar crop patch failed -- see linux-flowbar-shape.sh output above."
     # Left-click on the tray icon opens the Hub. Electron's StatusNotifierItem
     # advertises ItemIsMenu=false, so SNI hosts (waybar, Plasma, quickshell)
     # send Activate -> Tray 'click', which upstream never handles (macOS pops
@@ -305,18 +299,12 @@ step3_patch_bundle() {
     auto "Running linux-tray-click.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-tray-click.sh" "$target_bundle" \
       || warn "Tray-click patch failed -- see linux-tray-click.sh output above."
-    # The Hub is created focusable:false on every platform; on X11 Chromium
-    # turns a non-activatable window into an override-redirect (unmanaged)
-    # one: no move/resize/maximize/Alt-Tab (#36). Make it focusable on Linux.
-    auto "Running linux-hub-focusable.sh on $target_bundle"
-    bash "$SCRIPT_DIR/patches/linux-hub-focusable.sh" "$target_bundle" \
-      || warn "Hub-focusable patch failed -- see linux-hub-focusable.sh output above."
     # Keep ordinary launcher opens in the background after onboarding.
     auto "Running linux-background-launch.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-background-launch.sh" "$target_bundle" \
       || { warn "Background launch patch failed."; exit 1; }
 
-    # Mirror status IPC to the native layer-shell capsule when enabled.
+    # Mirror status IPC to the native layer-shell capsule (the launcher always enables it).
     auto "Running linux-native-flowbar.sh on $target_bundle"
     bash "$SCRIPT_DIR/patches/linux-native-flowbar.sh" "$target_bundle" \
       || warn "Native Flow Bar patch failed -- see linux-native-flowbar.sh output above."

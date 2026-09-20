@@ -13,20 +13,18 @@ our clean-room Rust helper attached. I built it the same way I build
 | `patches/helper-resolver.sh` | The one mandatory app patch: adds a `'linux'` branch to the helper-path resolver in `.webpack/main/index.js`. Surgical, idempotent, keeps a `.orig` backup, verifies with a unique anchor. |
 | `patches/mac-gates.sh` | Gates the macOS "/Applications" startup guard to `darwin` so it no-ops on Linux (otherwise a blocking dialog + `app.quit()` kills launch). |
 | `build-linux.sh` | The full Phase-0 pipeline. Each step prints `[AUTO]` (runs here) or `[MANUAL]` (network/toolchain needed, documented + stubbed). |
-| `patches/linux-flowbar-shape.sh` | Crops the XWayland status surface to the visible Flow Bar and keeps it unmapped while idle. |
 | `patches/linux-tray-click.sh` | Tray left-click (StatusNotifierItem `Activate`) opens the Hub; upstream only handles the context menu. |
-| `patches/linux-hub-focusable.sh` | Makes the Hub focusable on Linux so X11 does not turn it into an unmanaged override-redirect window (#36). |
-| `patches/linux-native-flowbar.sh` | Mirrors the status-window IPC over a Unix socket (gated on `WISPR_NATIVE_FLOWBAR=1`) so the omarchy-shell plugin in `omarchy/plugins/wispr.flowbar/` can draw the Flow Bar. |
+| `patches/linux-native-flowbar.sh` | Mirrors the status-window IPC over a Unix socket (the launcher always sets `WISPR_NATIVE_FLOWBAR=1`) so the omarchy-shell plugin in `omarchy/plugins/wispr.flowbar/` can draw the Flow Bar. |
 | `extract-flowbar-strings.sh` | Build step: extracts the status renderer's English string table to `resources/flowbar-strings.en.json` for the native Flow Bar. |
-| `omarchy/install-flowbar-plugin.sh` | Links `omarchy/plugins/wispr.flowbar` into `~/.config/omarchy/plugins/` and enables it (`--uninstall` reverses). |
+| `omarchy/install-flowbar-plugin.sh` | Links `omarchy/plugins/wispr.flowbar` into `~/.config/omarchy/plugins/` and enables it; `--reload` restarts the shell and verifies the running version (`--uninstall` reverses). |
+| `packaging/appimage.sh` | Writes the AppDir, the `AppRun` launcher, desktop file and icons, then runs `appimagetool`. |
+| `launcher-common.sh`, `doctor.sh` | The runtime launcher library and `wispr-flow --doctor`, copied into the AppImage. |
 | `verify-patches.sh` | Post-repack safety net: static-greps the shipped `app.asar` for the Linux patch markers and fails the build if any are missing. |
-| `packaging/rpm.sh` | Packages the validated Linux tree as an installable `.rpm` (Fedora/RHEL). |
 | `patches/v8-14.8-better-sqlite3-multiple-ciphers.patch` | Clean-room V8 14.8 source-compat patch for `better-sqlite3-multiple-ciphers` (applied before `@electron/rebuild`). |
 | `README.md` | This file. |
 
-These scripts only **read** `extract/`, the prebuilt helper binary (resolved
-via `HELPER_BIN`; the helper lives in its own repo,
-`github.com/wispr-flow-linux/helper`, pinned in `helper-version.txt`), and
+These scripts only **read** `extract/`, the helper binary (built from the
+sibling `helper/` directory, or `HELPER_BIN`), and
 `docs/reference/`. They write only under `scripts/` outputs and the build work
 dir `build-linux/`. I keep the helper binary and `docs/reference/` read-only on
 purpose. Nothing here touches them.
@@ -44,7 +42,7 @@ Wispr Flow Setup.exe ──7z──▶ *.nupkg ──7z──▶ lib/net45/{reso
    Step 5  DROP win-ca / crypt32 (Windows-only)            │
    Step 6  STAGE Linux Electron 42 runtime  [MANUAL]       │
    Step 7  COPY in wispr-flow-linux-helper, repack asar    │
-   Step 8  PACKAGE .deb/.rpm/.AppImage (or run-in-place)   │  [MANUAL]
+   Step 8  PACKAGE .AppImage (or run-in-place)                │  [MANUAL]
                                                            ▼
                                           build-linux/stage/  (resources tree)
 ```
@@ -109,7 +107,7 @@ leave the mac/win paths untouched, so the patch can't regress those platforms.
 | 5. Drop win-ca/crypt32 | ✅ auto | Removes `crypt32-{ia32,x64}.node`; Linux uses the system CA bundle. Jabra Linux ELF is kept (already cross-platform). |
 | 6. Stage Linux Electron 42 | ⚠️ MANUAL | One hard network dep. Electron 42 is a normal upstream release with linux-x64/arm64 artifacts, so availability is expected — **verify the exact patch version (42.3.0) is downloadable**. |
 | 7. Copy helper + repack | ✅ auto | Helper staged at `Release/wispr-flow-linux-helper` (0755). Repack needs `@electron/asar`. |
-| 8. Package .deb/.rpm/.AppImage | ⚠️ MANUAL | electron-forge already declares maker-deb/maker-rpm; or hand-roll like claude-desktop-debian's `scripts/packaging/*`. |
+| 8. Package .AppImage | ⚠️ MANUAL | `build.sh` runs `scripts/packaging/appimage.sh` after staging. |
 
 **Real blockers:** none of these are show-stoppers. Two need network or
 toolchain though: (a) the Linux Electron 42.3.0 download, and (b) the native

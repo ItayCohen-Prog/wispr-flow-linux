@@ -1,28 +1,24 @@
 #!/usr/bin/env bash
-# Common launcher functions for Wispr Flow (deb / rpm / AppImage).
-# Sourced by the per-package /usr/bin/wispr-flow launcher to avoid
-# duplicating the display-backend, logging, and Electron-arg logic.
+# Common launcher functions for the Wispr Flow AppImage on Omarchy. Sourced by
+# the AppImage's AppRun (scripts/packaging/appimage.sh writes it) so logging,
+# session checks and the Electron arguments live in one place.
 #
-# Scoped to Wispr Flow's actual runtime needs. The Claude-Desktop
-# reference this was ported from also carried cowork/VM, wco-shim
-# titlebar, IBus-override, and password-store handling — none of which
-# Wispr Flow has, so they are intentionally absent here. See the Phase 3
-# report for the kept-vs-dropped rationale.
+# The app runs on native Wayland with the Flow Bar drawn by the omarchy-shell
+# plugin over a Unix socket. There is no X11 or XWayland mode: without a
+# Wayland session and the plugin's socket the launcher refuses to start and
+# says why.
 #
-# Env var convention: WISPR_* (not CLAUDE_*). Supported overrides:
-#   WISPR_USE_WAYLAND=1   force native Wayland (diagnostic override; the Flow
-#                         Bar's transparent window cannot pass clicks there)
-#   WISPR_DISABLE_GPU=1   disable GPU / software rasterizer (blank-window
-#                         workaround on broken drivers / remote sessions)
+# Env var convention: WISPR_*. Supported overrides:
+#   WISPR_NATIVE_FLOWBAR=1  start without waiting for the plugin socket (dev)
+#   WISPR_DISABLE_GPU=1     disable GPU / software rasterizer (blank-window
+#                           workaround on broken drivers)
 #
 # Design notes:
 #   - WM_CLASS is hardcoded "Wispr Flow" (matches the .desktop
-#     StartupWMClass written by the packaging makers; no sed placeholder).
-#   - No --password-store flag. Wispr Flow uses Electron safeStorage, but
-#     the port analysis records no re-auth-on-launch failure, and
-#     Electron's keyring autodetect works on KDE/GNOME. Omitting the flag
-#     keeps the launcher desktop-agnostic. (Contrast: claude-desktop
-#     pins it for issue #593, which Wispr does not exhibit.)
+#     StartupWMClass written by the AppImage maker).
+#   - No --password-store flag. Wispr Flow uses Electron safeStorage and
+#     Electron's keyring autodetect works; omitting the flag keeps the
+#     launcher desktop-agnostic.
 
 # WM_CLASS / StartupWMClass — must match upstream productName "Wispr Flow".
 readonly WM_CLASS='Wispr Flow'
@@ -67,7 +63,7 @@ log_session_env() {
 		WAYLAND_DISPLAY \
 		DISPLAY \
 		XDG_CURRENT_DESKTOP \
-		WISPR_USE_WAYLAND \
+		WISPR_NATIVE_FLOWBAR \
 		WISPR_DISABLE_GPU
 	do
 		log_message "  $key=${!key:-}"
@@ -81,115 +77,55 @@ check_display() {
 	[[ -n ${DISPLAY:-} || -n ${WAYLAND_DISPLAY:-} ]]
 }
 
-# Detect display backend (Wayland vs X11).
-# Sets: is_wayland
-#
-# Electron 42 cannot apply partial BrowserWindow mouse-input regions on native
-# Wayland. Wispr Flow's status renderer stays logically 440x320, but the Linux
-# patch maps only a tightly cropped OS surface around the visible Flow Bar or
-# notification and unmaps it while idle. build_electron_args pins that UI to
-# XWayland because Electron can reliably move and resize the cropped surface
-# there. The helper still uses the session's /dev/uinput, /dev/input, and
-# wl-clipboard paths; it does not depend on Electron's display backend.
-# WISPR_USE_WAYLAND remains a diagnostic override for native Ozone Wayland.
-detect_display_backend() {
-	is_wayland=false
-	[[ -n ${WAYLAND_DISPLAY:-} ]] && is_wayland=true
-	# Return 0 unconditionally: the function's job is to *set* is_wayland,
-	# not to report the backend via exit status. Without this, the trailing
-	# `&&` above leaves $? at 1 on X11/no-Wayland, which would abort any
-	# caller running under `set -e` (or break `detect_display_backend && ...`).
-	return 0
-}
-
-# Native Flow Bar: when an omarchy-shell (Quickshell) plugin serves the Flow
-# Bar over a Unix socket, Electron can run on native Wayland (per-monitor
-# scaling, managed Hub) with its own status window never mapped. Enabled when
-# WISPR_NATIVE_FLOWBAR=1, disabled when =0, otherwise auto: on iff the socket
-# exists. Sets: native_flowbar_socket.
+# Native Flow Bar: the omarchy-shell plugin serves the Flow Bar over a Unix
+# socket and Electron runs on native Wayland with its own status window never
+# mapped. WISPR_NATIVE_FLOWBAR=1 skips the socket check (development).
+# Sets: native_flowbar_socket.
 native_flowbar_enabled() {
 	native_flowbar_socket="${XDG_RUNTIME_DIR:-/tmp}/wispr-flow/flowbar.sock"
-	case "${WISPR_NATIVE_FLOWBAR:-}" in
-		1) return 0 ;;
-		0) return 1 ;;
-	esac
-	[[ -S $native_flowbar_socket ]]
+	[[ ${WISPR_NATIVE_FLOWBAR:-} == '1' || -S $native_flowbar_socket ]]
 }
 
-# Build the Electron arguments array based on package type and backend.
-# Requires: is_wayland to be set (call detect_display_backend first).
-# Sets: electron_args array
-# Arguments: $1 = "appimage" | "rpm" | "deb" | "nix" (affects sandbox).
+# Build the Electron arguments for the AppImage on a Wayland session with the
+# native Flow Bar. Returns 1 when the session is not Wayland or the plugin is
+# not serving the bar; `launch_error` then holds the reason for the user.
+# Sets: electron_args array, launch_error.
+# Exports: WISPR_NATIVE_FLOWBAR, WISPR_FLOWBAR_SOCKET, GDK_BACKEND.
 build_electron_args() {
-	local package_type="${1:-rpm}"
+	launch_error=''
+	# The AppImage runs from a FUSE mount where chrome-sandbox loses its
+	# setuid bit, so Electron must be told not to sandbox itself.
+	electron_args=('--no-sandbox' "--class=$WM_CLASS")
 
-	electron_args=()
-
-	# Sandbox: deb/rpm install chrome-sandbox setuid-root, so Electron
-	# sandboxes itself with no flag. The AppImage runs from a FUSE mount
-	# where the setuid bit is dropped, so it must pass --no-sandbox.
-	[[ $package_type == 'appimage' ]] && electron_args+=('--no-sandbox')
-
-	# WM_CLASS must match the .desktop StartupWMClass and upstream
-	# productName so the window groups under the right taskbar icon.
-	electron_args+=("--class=$WM_CLASS")
-
-	# Remote XRDP sessions lack GPU acceleration and render a blank
-	# window when GPU compositing is on. Detect via XRDP_SESSION (set by
-	# xrdp's session init) and the loginctl session Type.
-	local rdp_session_type=''
-	[[ -n ${XDG_SESSION_ID:-} ]] && rdp_session_type=$(
-		loginctl show-session "$XDG_SESSION_ID" \
-			-p Type --value 2>/dev/null
-	)
-	# Track the GPU-disable decision so XRDP and WISPR_DISABLE_GPU do not
-	# stack duplicate flags — either signal is sufficient.
-	local _disable_gpu=false
-	if [[ -n ${XRDP_SESSION:-} || $rdp_session_type == xrdp ]]; then
-		_disable_gpu=true
-		log_message 'XRDP session detected - GPU compositing disabled'
-	fi
 	# WISPR_DISABLE_GPU=1: opt-in workaround for blank windows / GPU
 	# process crashes on broken drivers.
 	if [[ ${WISPR_DISABLE_GPU:-} == '1' ]]; then
-		_disable_gpu=true
 		log_message 'WISPR_DISABLE_GPU=1 - hardware acceleration disabled'
-	fi
-	[[ $_disable_gpu == true ]] \
-		&& electron_args+=('--disable-gpu' '--disable-software-rasterizer')
-
-	# X11 session: let Electron's Ozone default handle it, no extra flags.
-	if [[ $is_wayland != true ]]; then
-		log_message 'X11 session detected'
-		return
+		electron_args+=('--disable-gpu' '--disable-software-rasterizer')
 	fi
 
-	# Wayland session.
-	local native_flowbar=false
-	if native_flowbar_enabled; then
-		native_flowbar=true
-		log_message "Native Flow Bar socket present ($native_flowbar_socket) - native Wayland backend"
-		export WISPR_NATIVE_FLOWBAR=1
-		export WISPR_FLOWBAR_SOCKET="$native_flowbar_socket"
+	if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
+		launch_error='Wispr Flow on Omarchy needs a Wayland session (WAYLAND_DISPLAY is unset).'
+		log_message "$launch_error"
+		return 1
 	fi
-	if [[ ${WISPR_USE_WAYLAND:-} == '1' || $native_flowbar == true ]]; then
-		# Explicit native-Wayland opt-in: pin the Ozone Wayland platform
-		# and enable the Wayland IME path.
-		log_message 'WISPR_USE_WAYLAND=1 - native Wayland (Ozone) backend'
-		electron_args+=('--enable-features=UseOzonePlatform,WaylandWindowDecorations')
-		electron_args+=('--ozone-platform=wayland')
-		electron_args+=('--enable-wayland-ime')
-		electron_args+=('--wayland-text-input-version=3')
-		# Override a system-wide GDK_BACKEND=x11 that would otherwise stop
-		# GTK from connecting to the compositor (blurry/failed HiDPI).
-		export GDK_BACKEND=wayland
-	else
-		# The Flow Bar patch physically crops and unmaps the status surface.
-		# XWayland supports the required deterministic move/resize behavior;
-		# native Wayland would keep the original click-blocking rectangle.
-		log_message 'Wayland session - XWayland backend for cropped Flow Bar'
-		electron_args+=('--ozone-platform=x11')
+	if ! native_flowbar_enabled; then
+		launch_error="The Flow Bar plugin is not running (no socket at $native_flowbar_socket). Install it with scripts/omarchy/install-flowbar-plugin.sh --reload, then start Wispr Flow again."
+		log_message "$launch_error"
+		return 1
 	fi
+
+	log_message "Native Flow Bar socket present ($native_flowbar_socket) - native Wayland backend"
+	export WISPR_NATIVE_FLOWBAR=1
+	export WISPR_FLOWBAR_SOCKET="$native_flowbar_socket"
+	electron_args+=('--enable-features=UseOzonePlatform,WaylandWindowDecorations')
+	electron_args+=('--ozone-platform=wayland')
+	electron_args+=('--enable-wayland-ime')
+	electron_args+=('--wayland-text-input-version=3')
+	# Override a system-wide GDK_BACKEND=x11 that would otherwise stop GTK
+	# from connecting to the compositor (blurry/failed HiDPI).
+	export GDK_BACKEND=wayland
+	return 0
 }
 
 # Set common environment variables.
@@ -240,14 +176,11 @@ cleanup_stale_lock() {
 #===============================================================================
 # Input-access udev rule installer (--install-udev-rules)
 #
-# For formats without a root post-install hook (AppImage, non-NixOS Nix): write
-# the same rule the deb/rpm packages ship, then reload + trigger udev. Escalates
-# via pkexec (graphical) or sudo. The deb/rpm/Nix builds install the rule for
-# you; this is the manual one-step equivalent.
+# An AppImage has no root post-install hook, so this writes the rule, then
+# reloads + triggers udev. Escalates via pkexec (graphical) or sudo.
 #===============================================================================
 
-# Canonical rule text. Keep in sync with the copies in scripts/packaging/deb.sh,
-# scripts/packaging/rpm.sh, and nix/wispr-flow.nix.
+# Canonical rule text.
 _wispr_udev_rules_content() {
 	cat <<'UDEV'
 # Wispr Flow: grant the active-session user the input access the helper needs.
@@ -319,7 +252,7 @@ install_udev_rules() {
 #
 # run_doctor and its helpers live in doctor.sh next to this file. Sourced
 # here so any consumer of launcher-common.sh gets the run_doctor entry
-# point. Each packaging target installs doctor.sh alongside this file.
+# point. The AppImage installs doctor.sh alongside this file.
 #===============================================================================
 # shellcheck source=scripts/doctor.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/doctor.sh"

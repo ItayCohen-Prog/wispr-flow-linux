@@ -2,24 +2,18 @@
 //!
 //! Injection uses an in-process uinput virtual keyboard (`uinput.rs`) — real
 //! kernel input events the compositor routes to the focused surface, which is
-//! the only compositor-agnostic way to synthesize input on Wayland (XTEST does
-//! not reach native Wayland windows). Clipboard uses `wl-clipboard`
-//! (`wl-copy`/`wl-paste`).
+//! the only compositor-agnostic way to synthesize input on Wayland. Clipboard
+//! writes use the in-process `ext-data-control` owner (`wl_clipboard.rs`) with
+//! `wl-copy` as fallback; clipboard reads use `wl-paste`.
 //!
 //! Implemented:
-//!   * PasteText        — wl-copy the text, then uinput Shift+Insert by default
+//!   * PasteText        — set clipboard (text/plain + text/html), then uinput Shift+Insert by default
 //!   * SimulateKeyPress — VK -> evdev (keymap.rs) -> uinput chord
-//!   * GetSelectedText  — copy-probe: save clipboard, uinput Ctrl+C, read, restore
+//!   * GetSelectedText  — AT-SPI Text read first; fallback copy-probe (save clipboard, Ctrl+C, read, restore)
 //!   * GetAccessibilityStatus — true when uinput is usable
 //!
-//! Best-effort / known gaps (Wayland exposes almost nothing here without
-//! compositor-specific D-Bus/portal calls):
-//!   * GetActiveAppInfo / GetRunningApps — no portable protocol; returns empty.
-//!     KDE could be wired via KWin D-Bus and GNOME via a shell extension later.
-//!   * Held-modifier snapshot/release (the Windows helper's GetKeyState dance)
-//!     needs reading /dev/input; not done yet (TODO).
-//!   * Simultaneous text/plain + text/html clipboard offer (wl-copy sets one
-//!     payload); we offer plain text, which is what paste targets read (TODO).
+//! GetActiveAppInfo / GetRunningApps / focus events are NOT handled here: the
+//! composing layer (`mod.rs::Composed`) supplies them from the AT-SPI tracker.
 
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
@@ -31,10 +25,9 @@ use super::{ActiveApp, Backend, PasteShortcut, Result, RunningApp, Selection};
 use crate::keymap;
 
 /// Wayland injection + clipboard + selection. Active-app identity is **not**
-/// handled here: `detect()` selects an `ActiveAppProvider` (KWin / GNOME ext /
-/// AT-SPI) independently and composes it on top, so this backend stays a pure,
-/// compositor-agnostic injector. The active-app methods below therefore return
-/// empty / no-op (the composing layer supplies identity from the provider).
+/// handled here: `detect()` starts the AT-SPI tracker independently and
+/// composes it on top, so this backend stays a pure, compositor-agnostic
+/// injector. The active-app methods below therefore return empty / no-op.
 pub struct WaylandBackend {
     uinput: UInput,
     has_wl_copy: bool,
@@ -126,13 +119,13 @@ impl Backend for WaylandBackend {
     }
 
     fn get_active_app(&mut self) -> Result<ActiveApp> {
-        // No native active-app source on Wayland; the composing `ActiveAppProvider`
-        // (KWin / GNOME ext / AT-SPI, chosen in `detect()`) supplies identity.
+        // No native active-app source on Wayland; the composing AT-SPI tracker
+        // (started in `detect()`) supplies identity.
         Ok(ActiveApp::default())
     }
 
     fn get_running_apps(&mut self) -> Result<Vec<RunningApp>> {
-        // See `get_active_app`: supplied by the composing provider.
+        // See `get_active_app`: supplied by the composing tracker.
         Ok(Vec::new())
     }
 
@@ -173,22 +166,12 @@ impl Backend for WaylandBackend {
     }
 
     fn set_focus_detection(&mut self, _active: bool) {
-        // Focus events come from the composing `ActiveAppProvider`, not here.
+        // Focus events come from the composing AT-SPI tracker, not here.
     }
 
     fn name(&self) -> &'static str {
         "wayland"
     }
-}
-
-/// Heuristic: is this a KDE Plasma session (so the KWin scripting bridge is
-/// worth trying)? Checks the standard desktop-environment env vars. Used by
-/// `mod.rs::pick_active_app_provider`.
-pub(crate) fn is_kde() -> bool {
-    let probe = |k: &str| std::env::var(k).unwrap_or_default().to_ascii_uppercase();
-    probe("XDG_CURRENT_DESKTOP").contains("KDE")
-        || probe("XDG_SESSION_DESKTOP").contains("KDE")
-        || std::env::var_os("KDE_FULL_SESSION").is_some()
 }
 
 fn which(prog: &str) -> bool {

@@ -2,110 +2,65 @@
 
 # Building from Source
 
-You build a local Wispr Flow for Linux package from the Wispr Flow Windows
-installer. By default `build.sh` downloads it for you; pass `--exe` to use one
-you supply.
+`./build.sh` turns the Wispr Flow Windows installer into the AppImage that
+`packaging/arch/PKGBUILD` installs. The setup steps in the
+[repository README](../../README.md) run it once; this page is the reference
+for what it does and what can go wrong.
 
 ```bash
-# Build for your distro's native format (downloads the installer):
-./build.sh --build rpm
-
-# ...or supply your own installer:
-./build.sh --build rpm --exe "/path/to/Wispr Flow Setup-v1.5.695.exe"
+./build.sh --exe "$HOME/Downloads/Wispr Flow Setup-v1.6.7.exe"
 ```
 
 ## Prerequisites
 
-Hey! Before you reach for a package manager, `./build.sh` already checks for
-these. On Debian/Ubuntu (apt) and Fedora/RHEL (dnf) it offers to install them
-for you via `scripts/setup/dependencies.sh`. Here are the logical deps:
+`./build.sh` checks for these and prints the `pacman` line for anything missing;
+it installs nothing itself.
 
-| Command | Package (Debian / Fedora) | Used for |
+| Command | Arch package | Used for |
 |---|---|---|
-| `7z` | `p7zip-full` / `p7zip p7zip-plugins` | extract the Squirrel `.exe` → `.nupkg` → app payload |
+| `7z` | `7zip` | extract the Squirrel `.exe` → `.nupkg` → app payload |
+| `curl` | `curl` | download the Linux Electron runtime and the prebuilt native modules |
 | `wrestool`, `icotool` | `icoutils` | pull icons out of the Windows resources |
-| `convert` | `imagemagick` / `ImageMagick` | icon resize/convert to Linux sizes |
+| `convert` | `imagemagick` | icon resize/convert to Linux sizes |
 | `rsync` | `rsync` | stage the resources tree |
-| `node`, `npx` | `nodejs`, `npm` | `@electron/asar` pack/unpack + `@electron/rebuild` |
-| `cargo` *(optional)* | `cargo` | only to build the helper yourself from [its repo](https://github.com/wispr-flow-linux/helper); not needed for this repo's packages |
-| `wget` **or** `curl` | `wget` / `curl` | download the Linux Electron runtime |
+| `node`, `npx` | `nodejs`, `npm` | `@electron/asar` pack/unpack |
+| `python3` | `python` | every patch under `scripts/patches/` |
+| `appimagetool` | (not packaged) | `scripts/packaging/appimage.sh`; download it to `~/.local/bin` |
+| `cargo` | `rustup` | build the helper first: `cd helper && cargo build --release` |
 
-Format-specific (only the one you build):
-
-| Command | Package | For |
-|---|---|---|
-| `dpkg-deb` | `dpkg-dev` / `dpkg` | `--build deb` |
-| `rpmbuild` | `rpm` / `rpm-build` | `--build rpm` |
-
-A **Rust toolchain** (`rustc` + `cargo`) is only needed if you build the helper
-yourself from its repo; the build auto-fetches the prebuilt helper otherwise.
-The native sqlite rebuild pulls `@electron/rebuild` via `npx` at build time, so
-that one isn't a system package you install ahead of time.
+The helper is staged from `helper/target/release/`; the build refuses to
+download the upstream prebuilt helper when that sibling build is missing.
 
 ## Obtaining the installer
 
-By default `build.sh` resolves and downloads the installer from Wispr's official
-endpoint (`scripts/setup/resolve-installer-url.sh`) — the same path CI uses. The
-proprietary installer is never committed to the repo.
-
-To build against a specific installer instead, grab
-`Wispr Flow Setup-v<version>.exe` from [wisprflow.ai](https://wisprflow.ai) and
-pass it with `--exe`. The pinned version is **1.5.695** (set in `build.sh` as
-`APP_VERSION`); the auto-download verifies the upstream latest matches it and
-aborts on a mismatch, since a different installer version can drift the patch
-anchors.
-
-## Building
-
-By default `build.sh` fetches the latest installer; pass `--exe` to use your own.
+The build is pinned to Wispr Flow **1.6.7** (`APP_VERSION` in `build.sh`), the
+version the patches were verified against. Wispr's "latest" link now serves a
+small web installer with no payload, so download the versioned installer and
+pass it with `--exe`:
 
 ```bash
-# Auto-detect format from your distro (downloads the installer):
-./build.sh
-
-# Supply your own installer:
-./build.sh --exe "/path/to/Wispr Flow Setup-v1.5.695.exe"
-
-# Or specify the format explicitly:
-./build.sh --build deb        # Debian/Ubuntu .deb
-./build.sh --build rpm        # Fedora/RHEL .rpm
-./build.sh --build appimage   # distribution-agnostic AppImage
-./build.sh --build nix        # prints flake instructions (built via flake, not build.sh)
+curl -fL -o ~/Downloads/"Wispr Flow Setup-v1.6.7.exe" \
+  "https://dl.wisprflow.com/wispr-flow/win32/x64/Wispr%20Flow%20Setup-v1.6.7.exe"
 ```
 
-`build.sh` is a thin orchestrator over the validated staging engine
-(`scripts/build-linux.sh`) and the per-format makers
-(`scripts/packaging/<fmt>.sh`). It handles flag parsing, host detection,
-dependency install, the installer resolve/extract dispatch, and packaging
-dispatch. It doesn't reimplement staging itself. So if you're tracing a
-problem, the real work lives in those two layers underneath.
+The proprietary installer is never committed. A different installer version
+can drift the patch anchors; every patch asserts its anchor and fails the
+build rather than silently skipping.
 
-### Flags
+## Flags
 
 | Flag | Values | Meaning |
 |---|---|---|
-| `-b`, `--build` | `deb` `rpm` `appimage` `nix` | Output format. Defaults to your distro's native format. |
-| `--arch` | `amd64` `arm64` | Target architecture (overrides host detection). |
-| `-e`, `--exe` | path | Installer .exe to use. Optional; default: fetch the latest from Wispr's endpoint. |
+| `-e`, `--exe` | path | Installer .exe to use. Without it the build tries Wispr's endpoint, which currently fails (see above). |
+| `--arch` | `amd64` `arm64` | Target architecture (overrides host detection). arm64 is wired through but not hardware-validated. |
 | `-c`, `--clean` | `yes` `no` | Remove intermediate build files when done (default `no`). |
 | `-r`, `--release-tag` | string | Optional tag embedded in the package version. |
-| `--test-flags` | — | Parse + print the resolved flags, then exit **without** building. |
+| `--test-flags` | — | Parse and print the resolved flags, then exit **without** building. |
 
-`--test-flags` is the safe way to confirm what a build *would* do. I reach for
-it whenever I'm not sure a flag combo resolves the way I expect:
-
-```bash
-./build.sh --build appimage --arch arm64 --test-flags
-```
-
-### Architecture support
-
-`x86_64`/`amd64` is the fully validated target. That's where the VM sweep ran,
-so it's the one I'd trust first. `aarch64`/`arm64` is wired through every arch
-global (`arch`, `arch_deb`, `arch_rpm`, `electron_arch`) and Electron ships
-arm64 Linux artifacts, **but the arm64 build is not hardware-validated** — treat
-it as best-effort. Validation ran on x86_64; see
-[compatibility.md](compatibility.md).
+`build.sh` is a thin orchestrator over the staging engine
+(`scripts/build-linux.sh`) and the AppImage maker
+(`scripts/packaging/appimage.sh`). `build-linux/` is wiped at the start of
+every run, so copy anything you want to keep out of it.
 
 ## How it works
 
@@ -141,7 +96,7 @@ Here's what the staging pipeline (`scripts/build-linux.sh`) does:
    bundle); keep the Jabra Linux ELF (already cross-platform).
 6. **Stage Linux Electron 42**, repack `app.asar`, and stage the full resources
    tree (migrations, assets, the helper).
-7. **Package** as `.deb`/`.rpm`/`.AppImage` via `scripts/packaging/<fmt>.sh`.
+7. **Package** as an AppImage via `scripts/packaging/appimage.sh`.
 
 `scripts/verify-patches.sh` static-greps the repacked `app.asar` for the Linux
 patch markers, so a half-patched bundle fails the build instead of shipping
@@ -170,7 +125,7 @@ To use a local build instead (e.g. while hacking on the helper), point
 
 ```bash
 HELPER_BIN=/path/to/helper/target/release/wispr-flow-linux-helper \
-  ./build.sh --build deb
+  ./build.sh --exe "$HOME/Downloads/Wispr Flow Setup-v1.6.7.exe"
 ```
 
 An explicit `HELPER_BIN` is always respected: if it points at a missing or

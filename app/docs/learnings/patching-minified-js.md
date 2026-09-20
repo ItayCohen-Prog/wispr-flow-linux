@@ -262,7 +262,7 @@ Four layers: build log, syntactic validity, asar markers, runtime.
 1. Watch the build log for partial-application warnings:
 
    ```bash
-   ./build.sh --build appimage --clean no 2>&1 | tee build.log
+   ./build.sh --exe "$HOME/Downloads/Wispr Flow Setup-v1.6.7.exe" --clean no 2>&1 | tee build.log
    grep -E 'WARNING:|MISSING|expected exactly' build.log
    ```
 

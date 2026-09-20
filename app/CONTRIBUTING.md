@@ -7,7 +7,7 @@ channel:
 - **Found a bug?** File an
   [issue](https://github.com/wispr-flow-linux/wispr-flow-linux/issues/new/choose)
   with the bug template. Paste full `wispr-flow --doctor` output; include
-  distro, desktop, and session type (Wayland/X11). See
+  Omarchy, Hyprland and Quickshell versions. See
   [Filing an issue](#filing-an-issue).
 - **Have a fix in hand?** PRs that fix existing behaviour, restore parity with
   the macOS/Windows helper, or improve packaging are always welcome. Open the
@@ -29,25 +29,20 @@ I've scattered the docs across a few files. Here's the map:
 - [docs/styleguides/bash_styleguide.md](docs/styleguides/bash_styleguide.md):
   bash style ([style.ysap.sh](https://style.ysap.sh)). Tabs, 80 cols, `[[ ]]`,
   no `set -e`.
-- [docs/styleguides/docs_styleguide.md](docs/styleguides/docs_styleguide.md):
-  page anatomy and naming if you're adding a doc.
 - [docs/learnings/index.md](docs/learnings/index.md): subsystem deep-dives. Read
   the relevant entry first.
 - [docs/decisions.md](docs/decisions.md): architectural choices (ADR format).
 - [docs/reference/ipc-contract.md](docs/reference/ipc-contract.md): the IPC contract the helper implements.
 - [CHANGELOG.md](CHANGELOG.md): change history ([Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format).
 - [SECURITY.md](SECURITY.md): private vulnerability reporting.
-- [.github/CODEOWNERS](.github/CODEOWNERS): auto-review routing.
 
 ## What we accept
 
 This repo is a **repackager** of the proprietary Wispr Flow Electron app. It
 pairs with a **clean-room Rust helper** that reimplements the one native
 capability Wispr Flow ships only for macOS/Windows — text injection into the
-focused app. The helper now lives in its own repo
-([github.com/wispr-flow-linux/helper](https://github.com/wispr-flow-linux/helper));
-this repo consumes it as a prebuilt binary pinned in `helper-version.txt` and
-staged via the `HELPER_BIN` env var. Both sides welcome:
+focused app. The helper lives in the sibling `helper/` directory and the build
+stages it from `helper/target/release`. Both sides welcome:
 
 - Bug fixes against existing behaviour (packaging, launcher, helper, patches).
 - **Parity** with the macOS/Windows helper behaviour — closing gaps where the
@@ -75,8 +70,8 @@ macOS/Windows, it's an upstream bug — report it to
 
 | File here                                   | File upstream (Wispr)              |
 |---------------------------------------------|------------------------------------|
-| `.deb`/`.rpm`/AppImage won't install        | Transcription accuracy / model     |
-| Text injection broken on Wayland/X11        | Account, login, or billing flow    |
+| The AppImage or Arch package won't install  | Transcription accuracy / model     |
+| Text injection broken on Hyprland           | Account, login, or billing flow    |
 | `wispr-flow --doctor` reports wrong state   | Dictation hotkey logic in the app  |
 | Native sqlite rebuild / launcher rename      | Audio capture / mic selection      |
 
@@ -85,10 +80,10 @@ macOS/Windows, it's an upstream bug — report it to
 1. Use the issue template, not freeform.
 2. Paste full `wispr-flow --doctor` output. This is the most-skipped step, and
    it's the one I lean on most — it captures session type, `/dev/uinput` access,
-   clipboard tooling, the GNOME extension, and AT-SPI in one shot.
-3. Include distro, desktop, and session type (Wayland/X11). In my experience
+   clipboard tooling and AT-SPI in one shot.
+3. Include Omarchy, Hyprland and Quickshell versions. In my experience
    most Linux-only bugs trace to one of these.
-4. Text-injection bugs: note your compositor (KDE Plasma, GNOME, wlroots, X11).
+4. Text-injection bugs: note your Hyprland version and the app under the cursor.
    Each one uses a different helper backend.
 
 ## Patches against the app
@@ -119,14 +114,10 @@ per-line `# shellcheck disable=SCXXXX` with a why-comment is the last resort.
 
 ### Rust (the helper)
 
-The helper's code and its cargo gates (`cargo fmt`, `cargo clippy -D warnings`,
-`cargo test`) live in
-[github.com/wispr-flow-linux/helper](https://github.com/wispr-flow-linux/helper).
-Helper changes — new injection backends, IPC-contract parity, bug fixes — go
-there, and that repo's CI runs the Rust gates. In this repo the helper is
-consumed as a prebuilt binary pinned in `helper-version.txt` and staged via the
-`HELPER_BIN` env var. To bump it here, point `helper-version.txt` at a released
-helper tag.
+The helper's cargo gates (`cargo fmt --check`, `cargo clippy --all-targets --
+-D warnings`, `cargo test`) run in CI from `helper/`. It targets Hyprland only:
+uinput injection, evdev capture, the Wayland clipboard and AT-SPI focus
+tracking. There are no X11, GNOME or KDE backends to keep in parity.
 
 ### Markdown
 
@@ -135,9 +126,7 @@ URLs, and alt text can run over when breaking them hurts readability.
 
 ## Before submitting a PR
 
-- Run `shellcheck` + `actionlint` on touched scripts/workflows. Helper changes
-  (and their `cargo fmt` + `cargo clippy` + `cargo test` gates) go to the
-  [helper repo](https://github.com/wispr-flow-linux/helper), not here.
+- Run `shellcheck` on touched scripts and the cargo gates on helper changes.
 - For packaging/launcher/patch changes, build locally and run the artifact's
   `wispr-flow --doctor`. See [docs/building.md](docs/building.md). **Do not run
   `scripts/build-linux.sh` blindly** — its step 2 does `rm -rf build-linux/`,

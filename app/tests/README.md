@@ -1,70 +1,60 @@
 # Tests
 
-Hey! Here's how I test this thing locally. There are two tiers, and I've ordered
-them fastest → most environment-dependent (the Rust helper is tested in its own
-repo — more on that below).
+Four tiers, fastest first. CI (`.github/workflows/capsule-tests.yml` and
+`helper.yml`, on Blacksmith runners) runs the first three on every push.
 
-## 1. bats unit tests (fast, no build needed)
+## 1. bats unit tests (no build needed)
 
-This is where I start, every time. Pure-shell tests of the launcher library and
-the diagnostics — no artifact, no display, no root needed.
+Pure-shell tests of the launcher library, the diagnostics and the patch
+scripts. No artifact, no display, no root.
 
 ```bash
-bats tests/*.bats
+bats tests/*.bats          # or: npx --yes bats tests/*.bats
 ```
 
 | File | Covers |
 |------|--------|
-| `launcher-common.bats` | `scripts/launcher-common.sh`: logging paths, `check_display`, `detect_display_backend`, `build_electron_args` (sandbox/GPU/Wayland flag selection), `setup_electron_env`, `cleanup_stale_lock`, `wispr_config_dir`. |
-| `doctor.bats` | `scripts/doctor.sh`: the `_pass`/`_fail`/`_warn` counter, display/clipboard/helper/singleton-lock checks (driven with stubbed tool presence and temp fixtures), and `run_doctor` exit status. |
+| `launcher-common.bats` | `scripts/launcher-common.sh`: logging paths, `check_display`, `build_electron_args` (Wayland-only, plugin socket gate, GPU flag, exports), `setup_electron_env`, `cleanup_stale_lock`, `wispr_config_dir`. |
+| `doctor.bats` | `scripts/doctor.sh`: the `_pass`/`_fail`/`_warn` counter, display / Flow Bar socket / clipboard / helper / singleton-lock checks (driven with stubbed tool presence and temp fixtures), and `run_doctor` exit status. |
 | `verify-patches.bats` | `scripts/verify-patches.sh`: PASS when every Linux patch marker is present in a fixture app.asar, exit 1 when any one is omitted (omit-one matrix), exit 2 on bad usage. |
-| `linux-patches.bats` | The renderer, window-frame, Windows-behavior, deep-link, cropped Flow Bar, tray-click, Hub-focusable, and native Flow Bar patches in `scripts/patches/`: each patch is applied to a hermetic minified-JS fixture carrying its anchor. Tests assert the transformation and marker, preserve unrelated sites, parse both the outer bundle and injected renderer program, check idempotence, and require a non-zero exit when an anchor is absent. |
-| `flowbar-model.bats` | `omarchy/plugins/wispr.flowbar/FlowBarModel.js`, driven with node: the status → pill-state reducer, level smoothing, i18n `{key}` / `custom` notification texts, and the `notification:callback` payload. |
+| `linux-patches.bats` | The renderer, window-frame, Windows-behavior, deep-link, tray-click, background-launch and native Flow Bar patches in `scripts/patches/`: each is applied to a hermetic minified-JS fixture carrying its anchor. Tests assert the transformation and marker, preserve unrelated sites, parse the result with Node, check idempotence, and require a non-zero exit when an anchor is absent. |
+| `flowbar-model.bats` | `omarchy/plugins/wispr.flowbar/FlowBarModel.js`, driven with node: the status → capsule-state reducer, level smoothing, i18n `{key}` / `custom` notification texts, and the `notification:callback` payload. |
 | `extract-flowbar-strings.bats` | `scripts/extract-flowbar-strings.sh`: decodes the status renderer's English string table into JSON, fails on a bundle without the table, exit 2 on bad usage. |
 
-Don't have bats yet? Grab it: `sudo dnf install bats` / `sudo apt install bats`.
-
-## 2. Artifact tests (inspect built packages; install is CI-only)
-
-This tier looks at an actual built package. Each
-`test-artifact-<fmt>.sh <artifact-dir>` runs in two tiers of its own:
-
-- **Inspection** — always runs, no install, safe on any machine: package
-  metadata, FHS file placement (`/usr/bin/wispr-flow`,
-  `/usr/lib/wispr-flow/{launcher-common.sh,doctor.sh,wispr-flow,chrome-sandbox}`,
-  the helper binary, udev rule, desktop file, icons), `wl-clipboard`
-  dependency, launcher-script content, and the Linux patch markers in
-  `app.asar` (via `scripts/verify-patches.sh`).
-- **Install + smoke** — CI containers only, **opt-in via
-  `WISPR_ARTIFACT_INSTALL=1` and root**: installs the package, checks
-  on-disk files + setuid `chrome-sandbox`, runs `--doctor`, and does a headless
-  `xvfb-run` + `dbus-run-session` launch that polls `launcher.log` for the
-  helper-ready marker (`Helper service is ready: true`). **Skipped with a clear
-  message when not root or when tooling is missing** — so these scripts are
-  safe to run locally; they will not system-install.
+## 2. Node and QML tests
 
 ```bash
-# Inspection-only locally (these will NOT install on a non-root box):
-tests/test-artifact-rpm.sh       build-linux/rpm/rpmbuild/RPMS/x86_64
-tests/test-artifact-deb.sh       build-linux/deb
-tests/test-artifact-appimage.sh  build-linux/appimage   # extracts AppImage or uses staged AppDir
+node --test tests/*.test.cjs
+QT_QPA_PLATFORM=offscreen /usr/lib/qt6/bin/qmltestrunner -input tests/qml
 ```
 
-> One thing I'll keep shouting about: do NOT `sudo rpm -i` / `sudo dpkg -i` the
-> package on a dev machine — that would install the proprietary Wispr Flow
-> system-wide. The install tier is meant for clean CI containers; locally, only
-> the inspection tier ever runs.
+The Node tests cover the socket bridge's reconnect logic and the background
+launch patch. The QML tests drive `GlassCapsule` offscreen: geometry, the
+snapshot gate, entrance and exit motion, the processing clock, buttons and
+bounded messages. They exercise the fallback material, not the lens (which
+needs a compositor).
 
-If you go digging, the shared assertion lib plus `validate_app_contents` /
-`run_launch_smoke_test` all live in `test-artifact-common.sh`.
+## 3. Helper tests
 
-## 3. Helper tests (separate repo)
+```bash
+cd helper && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+```
 
-You won't find the helper tests here anymore — I moved the clean-room Rust helper
-into its own repo,
-[github.com/wispr-flow-linux/helper](https://github.com/wispr-flow-linux/helper).
-That's where its Rust unit tests (`cargo test` + `fmt --check` +
-`clippy -D warnings`) live, along with the Python integration validators (the IPC
-harness, the clipboard/focus/injection round-trips, and the libvirt VM matrix).
-This repo only ever consumes the helper's prebuilt release binary — pinned by tag
-in `helper-version.txt`.
+## 4. Artifact test (inspects a built AppImage)
+
+```bash
+tests/test-artifact-appimage.sh build-linux/appimage
+```
+
+Inspection only on a normal machine: file placement inside the AppDir, the
+helper binary, the udev rule text, the desktop file and icons, the launcher
+script content, and the patch markers in `app.asar` via
+`scripts/verify-patches.sh`. The install-and-smoke tier runs only as root with
+`WISPR_ARTIFACT_INSTALL=1` (CI containers) and is skipped with a message
+otherwise, so the script never installs anything on a dev machine.
+
+## Manual checks on the desktop
+
+The preview harness and the live checks for the glass capsule are described in
+[docs/glass-capsule.md](../docs/glass-capsule.md); the measured results are in
+[docs/glass-validation.md](../docs/glass-validation.md).

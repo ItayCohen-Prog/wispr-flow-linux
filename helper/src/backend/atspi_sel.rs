@@ -6,8 +6,8 @@
 //! grab its `org.a11y.atspi.Text` interface, and read the current selection
 //! (`GetSelection` -> `GetText`). No input synthesis, no clipboard churn.
 //!
-//! The `atspi` crate is pure-Rust (over `zbus`, the same crate family the KWin
-//! bridge uses) and async (tokio). The rest of the helper is blocking/threaded,
+//! The `atspi` crate is pure-Rust (over `zbus`) and async (tokio). The rest of
+//! the helper is blocking/threaded,
 //! so we spin up a tiny single-thread tokio runtime per call and `block_on` it.
 //! That keeps the single-static-binary property and avoids threading an async
 //! runtime through the whole backend.
@@ -68,9 +68,8 @@ pub fn get_selection() -> Result<Option<Selection>, String> {
 async fn probe() -> Result<Option<Selection>, String> {
     // Announce ourselves as an assistive-tech client so toolkits (Qt, GTK) expose
     // their accessible tree + Text interfaces. Without this the focused object's
-    // selection is often silently empty on a stock session — and on KDE the
-    // active-app provider is the KWin bridge (not the AT-SPI tracker), so nothing
-    // else flips this flag. Best-effort + idempotent; a failure isn't fatal.
+    // selection is often silently empty on a stock session. Best-effort +
+    // idempotent (the tracker sets it too); a failure isn't fatal.
     if let Err(e) = atspi::connection::set_session_accessibility(true).await {
         log::debug!("atspi_sel: set_session_accessibility(true) failed: {e}");
     }

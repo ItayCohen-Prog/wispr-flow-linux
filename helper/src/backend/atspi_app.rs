@@ -1,12 +1,11 @@
-//! AT-SPI universal active-app tracker (Tier-1 baseline).
+//! AT-SPI active-app tracker.
 //!
-//! A desktop-agnostic active-window/active-app provider built on the
-//! accessibility bus (`atspi` crate, already a dependency for selection in
-//! `atspi_sel.rs`). Unlike the KWin script bridge (KDE) and the GNOME Shell
-//! Introspect bridge (GNOME), this works unprivileged on GNOME, wlroots
-//! compositors (Sway/Hyprland/niri) and X11 — anywhere the AT-SPI registry is
-//! running — so it is the universal fallback that keeps active-app identity from
-//! ever going blank.
+//! The active-window/active-app provider, built on the accessibility bus
+//! (`atspi` crate, also used for selection in `atspi_sel.rs`). Wayland has no
+//! portable "which app owns the focused window" protocol; AT-SPI works
+//! unprivileged on wlroots compositors such as Hyprland — anywhere the AT-SPI
+//! registry (at-spi2-core) is running — so it is the source of active-app
+//! identity and focus events here.
 //!
 //! ## Mechanism
 //!
@@ -27,8 +26,7 @@
 //! From the sender we resolve a PID via the session bus
 //! `org.freedesktop.DBus.GetConnectionUnixProcessID`, then read
 //! `/proc/<pid>/comm` and `/proc/<pid>/exe` for a friendly `app_name` and a
-//! best-effort `bundle_id` (exe basename) — mirroring how `kwin.rs` / `x11.rs`
-//! fill `bundle_id` from WM_CLASS / exe. If the PID path fails we fall back to
+//! best-effort `bundle_id` (exe basename). If the PID path fails we fall back to
 //! the AT-SPI Application accessible's `name`.
 //!
 //! ## Threading / runtime
@@ -48,7 +46,7 @@
 //! AT-SPI only sees apps that expose accessibility. GTK and Qt (with their
 //! a11y bridges) report well. Many Electron apps, some terminals, and most
 //! games expose nothing, so their fields may be empty — we degrade gracefully
-//! and never panic. The shape mirrors `kwin::KwinTracker` / `gnome::GnomeTracker`.
+//! and never panic.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -75,8 +73,7 @@ const MAX_DEPTH: usize = 12;
 const MAX_NODES: usize = 400;
 
 /// State shared between the background focus-watcher thread and the dispatch
-/// thread that reads `current()` / toggles focus detection. Mirrors
-/// `gnome::Shared` field-for-field.
+/// thread that reads `current()` / toggles focus detection.
 struct Shared {
     cache: Mutex<Option<ActiveApp>>,
     events: EventSink,
@@ -144,8 +141,7 @@ impl AtspiTracker {
     /// background watcher for focus changes.
     ///
     /// Returns `Err` (changing nothing observable) if the accessibility bus /
-    /// registry is unreachable, so the caller can fall back — exactly like
-    /// `KwinTracker::start` / `GnomeTracker::start`.
+    /// registry is unreachable, so the caller can fall back.
     pub fn start(events: EventSink) -> Result<AtspiTracker, String> {
         let pid = std::process::id();
 
@@ -491,7 +487,7 @@ async fn resolve_active_app(conn: &Connection, source: &ObjectRef) -> ActiveApp 
     }
     if bundle_id.is_empty() && !app_name.is_empty() {
         // Best-effort: use the lower-cased app name as a synthetic id so the
-        // field isn't blank (mirrors kwin/x11 deriving id from WM_CLASS).
+        // field isn't blank.
         bundle_id = app_name.to_ascii_lowercase();
     }
 

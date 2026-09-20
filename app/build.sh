@@ -2,10 +2,11 @@
 #===============================================================================
 # build.sh -- top-level orchestrator for the unofficial Wispr Flow Linux build.
 #
-# Wraps the validated staging engine (scripts/build-linux.sh) and the packaging
-# makers (scripts/packaging/<fmt>.sh). This script does flag parsing, host
-# detection, dependency + download dispatch, and packaging dispatch -- it does
-# NOT reimplement staging logic.
+# Wraps the staging engine (scripts/build-linux.sh) and the AppImage maker
+# (scripts/packaging/appimage.sh). This script does flag parsing, host
+# detection, dependency checks, download dispatch and packaging dispatch -- it
+# does NOT reimplement staging logic. The AppImage is what packaging/arch/PKGBUILD
+# installs on Omarchy.
 #
 # Flow:
 #   parse_arguments
@@ -14,17 +15,13 @@
 #   download_installer  (--exe, else fetch latest) -> staged installer
 #   scripts/build-linux.sh           -> patch + native + stage (ARCH/version via env)
 #   fetch_electron (if not staged)   -> Linux Electron, launcher renamed wispr-flow
-#   run_packaging                    -> scripts/packaging/<fmt>.sh
+#   run_packaging                    -> scripts/packaging/appimage.sh
 #===============================================================================
 set -uo pipefail
 
 #--- global state (set by sourced functions) -----------------------------------
 arch=''
-arch_deb=''
-arch_rpm=''
 electron_arch=''
-distro_family=''
-build_format=''
 clean_action='no'
 local_exe_path=''
 release_tag=''
@@ -50,8 +47,7 @@ readonly ELECTRON_MAJOR='42'
 # to a readonly name, and the staging engine would silently fall back to its
 # own defaults.
 export APP_VERSION ELECTRON_VERSION ELECTRON_MAJOR
-# Exported so packaging makers (Phase 2 deb/appimage) can read them from the
-# environment; rpm.sh currently embeds its own metadata.
+# Exported so the AppImage maker can read them from the environment.
 readonly MAINTAINER='Wispr Flow Linux (unofficial)'
 readonly DESCRIPTION='Wispr Flow voice dictation for Linux (unofficial build)'
 export MAINTAINER DESCRIPTION
@@ -155,62 +151,19 @@ sync_stage_to_dist() {
 }
 
 #===============================================================================
-# Packaging dispatch -- hand the staged tree to scripts/packaging/<fmt>.sh.
+# Packaging dispatch -- hand the staged tree to scripts/packaging/appimage.sh.
 #===============================================================================
 run_packaging() {
-	say "Package as .$build_format"
+	say 'Package as AppImage'
 
 	local dist_dir="$work_dir/downloads/electron-dist"
 
-	# Shared maker signature: <maker>.sh <dist_dir> <version> <arch>
-	# where <arch> is the format-native arch. PACKAGE_NAME / WM_CLASS /
-	# MAINTAINER / DESCRIPTION are read from the (exported) environment.
-	case "$build_format" in
-		rpm)
-			chmod +x "$script_dir/scripts/packaging/rpm.sh" || die 'cannot chmod rpm.sh'
-			"$script_dir/scripts/packaging/rpm.sh" "$dist_dir" "$pkg_version" "$arch_rpm" \
-				|| die 'scripts/packaging/rpm.sh failed'
-			final_output_path=$(find "$work_dir/rpm/rpmbuild/RPMS" -name "${PACKAGE_NAME}-${pkg_version}-*.rpm" 2>/dev/null | head -1)
-			;;
-		deb)
-			chmod +x "$script_dir/scripts/packaging/deb.sh" || die 'cannot chmod deb.sh'
-			"$script_dir/scripts/packaging/deb.sh" "$dist_dir" "$pkg_version" "$arch_deb" \
-				|| die 'scripts/packaging/deb.sh failed'
-			final_output_path=$(find "$work_dir/deb" -maxdepth 1 -name "${PACKAGE_NAME}_${pkg_version}_*.deb" 2>/dev/null | head -1)
-			;;
-		appimage)
-			chmod +x "$script_dir/scripts/packaging/appimage.sh" || die 'cannot chmod appimage.sh'
-			# appimage uses the rpm-style arch (x86_64 / aarch64).
-			"$script_dir/scripts/packaging/appimage.sh" "$dist_dir" "$pkg_version" "$arch_rpm" \
-				|| die 'scripts/packaging/appimage.sh failed'
-			final_output_path=$(find "$work_dir/appimage" -maxdepth 1 -name "${PACKAGE_NAME}-${pkg_version}-*.AppImage" 2>/dev/null | head -1)
-			;;
-		nix)
-			# The Nix build is driven by the flake, not by this packaging
-			# dispatch: the derivation in nix/wispr-flow.nix runs its own
-			# hermetic extract -> patch -> repack and builds the Rust helper
-			# via rustPlatform, so it does not consume build-linux.sh's tree.
-			say 'Nix build'
-			cat <<'NIXMSG'
-The Nix package is built straight from the flake, not through build.sh. It
-never fetches the proprietary app -- point it at the installer .exe you
-obtained yourself via WISPR_FLOW_EXE (needs --impure):
-
-    WISPR_FLOW_EXE="/path/Wispr Flow Setup-v1.5.695.exe" \
-      nix build .#wispr-flow-fhs --impure   # recommended (glibc FHS wrapper)
-
-    WISPR_FLOW_EXE="/path/Wispr Flow Setup-v1.5.695.exe" \
-      nix build .#wispr-flow --impure       # bare derivation (no FHS loader)
-
-Overlay/non-flake callers can instead override:
-    wispr-flow.override { installerExe = /path/to/Setup.exe; }
-NIXMSG
-			return 0
-			;;
-		*)
-			die "Unknown build format '$build_format'"
-			;;
-	esac
+	# Maker signature: appimage.sh <dist_dir> <version> <arch>. PACKAGE_NAME /
+	# WM_CLASS / MAINTAINER / DESCRIPTION are read from the (exported) environment.
+	chmod +x "$script_dir/scripts/packaging/appimage.sh" || die 'cannot chmod appimage.sh'
+	"$script_dir/scripts/packaging/appimage.sh" "$dist_dir" "$pkg_version" "$arch" \
+		|| die 'scripts/packaging/appimage.sh failed'
+	final_output_path=$(find "$work_dir/appimage" -maxdepth 1 -name "${PACKAGE_NAME}-${pkg_version}-*.AppImage" 2>/dev/null | head -1)
 
 	if [[ -n $final_output_path && -f $final_output_path ]]; then
 		echo "Package created: $final_output_path"
@@ -221,22 +174,14 @@ NIXMSG
 
 #===============================================================================
 # Cleanup -- remove regenerable intermediate trees while preserving (a) the
-# produced package and (b) the expensive downloads/ tree (installer + Electron
-# runtime). The final artifact lives nested under the per-format dir (e.g.
-# rpm/rpmbuild/RPMS), so prune scaffolding subdirs rather than the dir itself.
+# produced AppImage and (b) the expensive downloads/ tree (installer + Electron
+# runtime).
 #===============================================================================
 clean_intermediates() {
 	local removed=0 target
 	for target in \
 		"$work_dir/stage" \
-		"$work_dir/app.asar.contents" \
-		"$work_dir/deb/pkgroot" \
-		"$work_dir/rpm/pkgroot" \
-		"$work_dir/rpm/rpmbuild/BUILD" \
-		"$work_dir/rpm/rpmbuild/BUILDROOT" \
-		"$work_dir/rpm/rpmbuild/SOURCES" \
-		"$work_dir/rpm/rpmbuild/SPECS" \
-		"$work_dir/rpm/rpmbuild/SRPMS"
+		"$work_dir/app.asar.contents"
 	do
 		[[ -e $target ]] || continue
 		rm -rf "$target" && removed=$((removed + 1))
@@ -252,12 +197,8 @@ clean_intermediates() {
 
 print_resolved_flags() {
 	echo '--- Resolved Flags ---'
-	echo "Build format:   $build_format"
-	echo "Arch (canon):   $arch"
-	echo "Arch (deb):     $arch_deb"
-	echo "Arch (rpm):     $arch_rpm"
+	echo "Arch:           $arch"
 	echo "Arch (electron):$electron_arch"
-	echo "Distro family:  $distro_family"
 	echo "Clean:          $clean_action"
 	echo "Exe:            ${local_exe_path:-<none: fetch latest upstream>}"
 	echo "Release tag:    ${release_tag:-<none>}"
@@ -274,7 +215,6 @@ main() {
 
 	say 'Host detection'
 	detect_architecture
-	detect_distro
 	check_system_requirements
 
 	say 'Argument parsing'
@@ -303,11 +243,8 @@ main() {
 	fetch_electron "$work_dir/downloads/electron-dist"
 
 	# Phase 3c: bridge the staged resources tree into the Electron runtime's
-	# resources/ dir (what the makers read). Nix builds from the flake and
-	# ignore this tree, so skip the sync there.
-	if [[ $build_format != 'nix' ]]; then
-		sync_stage_to_dist
-	fi
+	# resources/ dir (what the maker reads).
+	sync_stage_to_dist
 
 	# Phase 4: package.
 	run_packaging

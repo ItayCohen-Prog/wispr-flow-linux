@@ -25,7 +25,6 @@ setup() {
 	unset WAYLAND_DISPLAY
 	unset XDG_SESSION_TYPE
 	unset XDG_CURRENT_DESKTOP
-	unset WISPR_USE_WAYLAND
 
 	# shellcheck source=scripts/doctor.sh
 	source "$SCRIPT_DIR/../scripts/doctor.sh"
@@ -142,27 +141,42 @@ command() {
 	[[ $_doctor_failures -eq 0 ]]
 }
 
-@test "_doctor_check_display: reports the default XWayland UI backend" {
+@test "_doctor_check_display: reports the native Wayland Flow Bar mode" {
 	WAYLAND_DISPLAY='wayland-0'
 	run _doctor_check_display
-	[[ $output == *"XWayland UI backend (default; Flow Bar click-through enabled)"* ]]
+	[[ $output == *"native Wayland; the Flow Bar is drawn by the omarchy-shell plugin"* ]]
 }
 
-@test "_doctor_check_display: passes with DISPLAY set (X11)" {
+@test "_doctor_check_display: fails on an X11-only session" {
 	DISPLAY=':0'
 	_doctor_failures=0
 	run _doctor_check_display
-	[[ $output == *"[PASS]"* ]]
-	[[ $output == *"X11"* ]]
+	[[ $output == *"[FAIL]"* ]]
+	[[ $output == *"Wayland session"* ]]
 	_doctor_check_display >/dev/null
-	[[ $_doctor_failures -eq 0 ]]
+	[[ $_doctor_failures -eq 1 ]]
 }
 
-@test "_doctor_check_display: notes native Wayland mode when WISPR_USE_WAYLAND=1" {
-	WAYLAND_DISPLAY='wayland-0'
-	WISPR_USE_WAYLAND='1'
-	run _doctor_check_display
-	[[ $output == *"native Wayland forced"* ]]
+@test "_doctor_check_flowbar_socket: fails without the plugin socket" {
+	XDG_RUNTIME_DIR="$TEST_TMP/rt"
+	_doctor_failures=0
+	run _doctor_check_flowbar_socket
+	[[ $output == *"[FAIL]"* ]]
+	[[ $output == *"install-flowbar-plugin.sh"* ]]
+	_doctor_check_flowbar_socket >/dev/null
+	[[ $_doctor_failures -eq 1 ]]
+}
+
+@test "_doctor_check_flowbar_socket: passes when the socket exists" {
+	XDG_RUNTIME_DIR="$TEST_TMP/rt"
+	mkdir -p "$XDG_RUNTIME_DIR/wispr-flow"
+	python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' \
+		"$XDG_RUNTIME_DIR/wispr-flow/flowbar.sock"
+	_doctor_failures=0
+	run _doctor_check_flowbar_socket
+	[[ $output == *"[PASS]"* ]]
+	_doctor_check_flowbar_socket >/dev/null
+	[[ $_doctor_failures -eq 0 ]]
 }
 
 # =============================================================================
@@ -176,17 +190,6 @@ command() {
 	run _doctor_check_clipboard
 	[[ $output == *"[FAIL]"* ]]
 	[[ $output == *"wl-clipboard"* ]]
-	_doctor_check_clipboard >/dev/null
-	[[ $_doctor_failures -eq 1 ]]
-}
-
-@test "_doctor_check_clipboard: X11 - fails when neither xclip nor xsel present" {
-	DISPLAY=':0'
-	_hide_commands xclip xsel
-	_doctor_failures=0
-	run _doctor_check_clipboard
-	[[ $output == *"[FAIL]"* ]]
-	[[ $output == *"xclip"* ]]
 	_doctor_check_clipboard >/dev/null
 	[[ $_doctor_failures -eq 1 ]]
 }

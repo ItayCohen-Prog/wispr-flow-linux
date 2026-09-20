@@ -6,92 +6,66 @@
 > binaries as Release assets, which the main `wispr-flow-linux` package build
 > downloads instead of compiling the helper itself.
 
-Clean-room Linux helper for Wispr Flow. It is a standalone process that speaks the
-helper IPC contract the Wispr Flow Electron app already uses for its macOS (Swift)
-and Windows (C#) helpers, and backs the OS-integration commands with **X11 and
-Wayland** backends. The app ships no Linux helper; this fills that gap.
+Clean-room Linux helper for Wispr Flow. It is a standalone process that speaks
+the helper IPC contract the Wispr Flow Electron app uses for its macOS (Swift)
+and Windows (C#) helpers. The app ships no Linux helper; this fills that gap.
 
-The Wayland backend injects via an **in-process `/dev/uinput` virtual keyboard**
-(no `ydotoold` daemon, no root — just `/dev/uinput` write access from the logind
-`uaccess` ACL) + `wl-clipboard`. **`PasteText` is live-validated** inserting text
-into a focused native KDE Plasma Wayland app.
+Target platform: **Hyprland** (wlroots-style Wayland compositor) on Arch Linux /
+Omarchy. GNOME, KDE and X11 are not supported.
 
 **Contract is the source of truth:**
 [`docs/reference/ipc-contract.md`](https://github.com/wispr-flow-linux/wispr-flow-linux/blob/main/docs/reference/ipc-contract.md)
 (+ `keycodes.json`, `commands.json`), kept in the main `wispr-flow-linux` repo.
-Recovered directly from the shipped Electron bundle — not guessed.
 
-## What works
+## How it works
 
-| Command | X11 backend | Wayland backend |
-|---|---|---|
-| `IsReady` → `ACK` | ✅ handshake + keepalive | ✅ |
-| `PasteText` | ✅ clipboard (`xclip`/`xsel`) + XTEST Shift+Insert by default | ✅ **live-validated** — in-process text/plain+text/html clipboard + uinput Shift+Insert by default |
-| `SimulateKeyPress` | ✅ VK→keysym→keycode + XTEST | ✅ VK→evdev + uinput chord (waits for held modifiers) |
-| `GetActiveAppInfo` / `GetAppInfo` | ✅ `_NET_ACTIVE_WINDOW`→PID/`WM_CLASS` | ✅ **KDE** via KWin script bridge; ⬜ other compositors |
-| `GetRunningApps` | ✅ `_NET_CLIENT_LIST` | ⚠️ KDE: active app only (full list TBD); ⬜ other |
-| `SetFocusChangeDetectorState` → `AppInfoUpdate` | ⬜ (TODO: `PropertyNotify`) | ✅ **KDE** — focus events on fd 3, gated & deduped |
-| `GetSelectedTextViaCopy` | ⚠️ Ctrl+C copy-probe | ⚠️ Ctrl+C copy-probe |
-| `GetAccessibilityStatus` | ✅ (connection live) | ✅ (uinput live) |
-| everything else (intervals/BLE/panel/analytics…) | ACK no-op | ACK no-op |
+Wire protocol: commands arrive on **stdin (fd 0)**; all responses and
+helper-initiated events go out on **fd 3**; stderr is logging; stdout is never
+used for IPC.
 
-`detect()` picks Wayland when `$WAYLAND_DISPLAY` is set and `/dev/uinput` is
-writable, else X11 (`$DISPLAY`), else a no-op stub.
+| Command | Implementation |
+|---|---|
+| `IsReady` -> `ACK` | handshake + keepalive |
+| `PasteText` | in-process clipboard owner (`ext-data-control`, text/plain + text/html; `wl-copy` fallback) + uinput Shift+Insert (Ctrl+V when the `shift-insert` feature flag is off) |
+| `SimulateKeyPress` | Windows VK -> evdev code -> uinput chord (waits for physically held modifiers to come up) |
+| `GetActiveAppInfo` / `GetAppInfo` / `GetRunningApps` | AT-SPI accessibility bus: focused application via `window:activate` / `object:state-changed:focused`, PID -> `/proc` for name and exe |
+| `SetFocusChangeDetectorState` -> `AppInfoUpdate` | AT-SPI focus events on fd 3, gated and deduplicated |
+| `GetSelectedTextViaCopy` | AT-SPI `Text` interface read of the focused widget's selection; fallback: save clipboard, uinput Ctrl+C, `wl-paste`, restore |
+| `GetAccessibilityStatus` | true when the uinput device is live |
+| `CheckStaleKeys` | evdev `EVIOCGKEY` snapshot of physically held keys |
+| `KeypressEvent` (helper -> app) | global key capture from `/dev/input/event*` (evdev), translated to Windows VK codes; drives push-to-talk and the shortcut recorder |
+| everything else | ACK no-op, so the unmodified app stays healthy |
 
-Design choice: unhandled commands are ACK'd as safe no-ops so the unmodified app
-stays healthy instead of relaunch-looping the helper. See `src/main.rs` dispatch.
+Backend selection (`src/backend/mod.rs::detect`):
+
+* Injection: Wayland backend when `$WAYLAND_DISPLAY` is set (non-empty) and
+  `/dev/uinput` is writable; otherwise a no-op stub that still answers the
+  handshake.
+* Active app / focus: the AT-SPI tracker, started independently of injection
+  when `$WAYLAND_DISPLAY` is set and the a11y bus is reachable. If it is not,
+  active-app fields come back empty and no focus events are emitted.
+
+Requirements on the host:
+
+* `/dev/uinput` write access and `/dev/input/event*` read access for the
+  session user (logind `uaccess` udev rule, or the `uinput` / `input` groups).
+* `wl-clipboard` (`wl-copy`, `wl-paste`) for clipboard reads and the fallback
+  write path.
+* `at-spi2-core` (the accessibility bus). The helper sets
+  `org.a11y.Status.IsEnabled` so GTK/Qt apps expose their trees; apps without an
+  a11y bridge (many Electron apps, some terminals) report empty identity.
 
 ## Build
 
-Needs a Rust toolchain (not currently installed on this machine):
-
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # if needed
-cargo build            # debug
-cargo build --release  # single stripped binary -> target/release/wispr-flow-linux-helper
-cargo test             # framing roundtrip + decoder tests (proto.rs)
+cargo build --release   # -> target/release/wispr-flow-linux-helper
+cargo test
+cargo clippy --all-targets -- -D warnings
 ```
 
-`x11rb` is pure-Rust (speaks the X11 wire protocol over the socket), so no
-`libxcb`/`libX11` dev headers are required. For the clipboard baseline, install
-`xclip` (or `xsel`). XTEST must be enabled on the X server (it is by default).
-
-## Test without the full app
-
-`test_harness.py` mimics Electron's spawn (4 stdio pipes: commands on stdin,
-events on **fd 3**) and runs a scripted conversation:
-
-```bash
-cargo build
-python3 test_harness.py            # uses ./target/debug/wispr-flow-linux-helper
-RUST_LOG=debug python3 test_harness.py ./target/release/wispr-flow-linux-helper
-```
-
-Expected: an `ACK` for `IsReady`, an `ActiveAppInfo` for the focused window, a
-`RunningApps` list, and an `AccessibilityStatus`. (PasteText/SimulateKeyPress are
-commented out in the harness because they inject into the focused window.)
-
-**Live injection test** (`live_inject_test.py`) exercises the real PasteText +
-chord path against a focused editor:
-
-```bash
-# launches its own kate:
-python3 live_inject_test.py target/release/wispr-flow-linux-helper
-# or inject into whatever you already have focused (keep it focused ~5s):
-python3 live_inject_test.py target/release/wispr-flow-linux-helper none
-```
-
-It PasteTexts a marker, overwrites the clipboard with a sentinel, then Ctrl+A/Ctrl+C
-to read the editor back. The automated readback has a clipboard-owner race that can
-report a false negative — the paste landing is verifiable by eye in the editor.
-
-## Wiring into the app (Phase 0 packaging)
-
-One mandatory patch to the unmodified Electron main bundle: the helper-path
-resolver is a two-way `isMac ? mac : windows` switch with **no Linux case**
-(ipc-contract.md §8). Add a `'linux'` branch pointing at this binary, staged
-under `resources/Release/` (or wherever the Linux build places it), and spawn it
-with `stdio:["pipe","pipe","pipe","pipe"]` (the app already does this).
+All dependencies are pure Rust (no libdbus, libX11 or libwayland headers).
+`--version` prints the crate version and exits without touching fd 3 or the
+input devices; the app's `--doctor` uses it as a link/launch probe.
 
 ## Layout
 
@@ -99,41 +73,19 @@ with `stdio:["pipe","pipe","pipe","pipe"]` (the app already does this).
 src/
   main.rs            entry: stdin reader, fd3 writer, dispatch, IsReady/ACK
   proto.rs           envelope + framing (escape '+'/'|', delimiter '|') + tests
-  keymap.rs          Windows VK -> X11 keysym AND -> Linux evdev KEY_* (from keycodes.json)
+  keymap.rs          Windows VK <-> Linux evdev KEY_* tables (from keycodes.json)
   backend/
-    mod.rs           Backend trait + types + detect() (Wayland > X11 > stub)
-    x11.rs           X11 implementation (XTEST + _NET_* + xclip/xsel)
-    wayland.rs       Wayland implementation (uinput injection + clipboard + KWin)
+    mod.rs           Backend trait + types + detect() (Wayland or stub, composed with AT-SPI)
+    wayland.rs       injection + clipboard + selection
     uinput.rs        in-process /dev/uinput virtual keyboard + held-modifier wait
     wl_clipboard.rs  in-process text/plain+text/html clipboard (ext_data_control)
-    kwin.rs          KDE active-window bridge + focus-event source (zbus + KWin script)
-    stub.rs          no-op fallback (keeps handshake alive on unsupported sessions)
-test_harness.py      Electron stand-in: scripted handshake/info conversation
-live_inject_test.py  live PasteText + Ctrl+A/Ctrl+C round-trip against a focused editor
-focus_test.py        focus-event (AppInfoUpdate) streaming + SetFocusChangeDetectorState gating
-clipboard_test.py    in-process clipboard offers text/plain + text/html
+    atspi_app.rs     AT-SPI active-app tracker + AppInfoUpdate focus events
+    atspi_sel.rs     AT-SPI selection read for GetSelectedTextViaCopy
+    stub.rs          no-op fallback (keeps handshake alive without uinput)
+  capture/
+    mod.rs           KeypressEvent emission + HeldKeys (CheckStaleKeys)
+    evdev.rs         /dev/input reader, one thread per keyboard
 ```
-
-## Roadmap (next, in priority order)
-
-1. ✅ **KDE active-app identity + focus events** — done (`backend/kwin.rs`): KWin
-   script pushes `windowActivated` → zbus service → cache + `AppInfoUpdate` events
-   on fd 3 (gated by `SetFocusChangeDetectorState`).
-2. ✅ **Held-modifier handling** (Wayland) — done (`backend/uinput.rs`): `chord`
-   waits (≤1 s) for physically-held modifiers to come up, guarded on `/dev/input`
-   read access. It must NOT release/restore them on the virtual device: the
-   kernel drops the release (key isn't down on that device) and the restore
-   press then sticks session-wide. TODO: X11 `XQueryKeymap` equivalent.
-3. ✅ **text/plain + text/html clipboard** (Wayland) — done (`backend/wl_clipboard.rs`,
-   `ext_data_control`). TODO: X11 in-process selection owner; prior-clipboard
-   save/restore (read side still uses `wl-paste`).
-4. **Full `GetRunningApps` on KDE** — walk `workspace.windowList` in the KWin script.
-   **GNOME path** — shell-extension equivalent of the KWin bridge.
-5. **AT-SPI selection** — replace the copy-probe with real `atspi` Text-interface
-   reads (`GetSelectedTextViaCopy` without synthetic Ctrl+C). Both backends.
-6. **Focus tracking on X11** — `PropertyNotify` on `_NET_ACTIVE_WINDOW` → `AppInfoUpdate`.
-7. **codingCliAgent detection** — terminal + running-process heuristics for the
-   `ActiveAppInfo.codingCliAgent` enum.
 
 ## Legal
 

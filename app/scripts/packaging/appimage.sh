@@ -137,13 +137,21 @@ log_session_env
 if ! check_display; then
 	log_message 'No display detected (TTY session)'
 	echo 'Error: Wispr Flow requires a graphical desktop environment.' >&2
-	echo 'Run from within a Wayland or X11 session, not a TTY.' >&2
+	echo 'Run from within a Wayland session, not a TTY.' >&2
 	echo 'Tip: run this AppImage with --doctor to diagnose your setup.' >&2
 	exit 1
 fi
 
-detect_display_backend
-build_electron_args 'appimage'
+# Needs Wayland plus the omarchy-shell Flow Bar plugin. Say why when not,
+# on stderr and as a desktop notification (launches from the app menu have
+# no terminal).
+if ! build_electron_args; then
+	echo "Error: \$launch_error" >&2
+	echo 'Tip: run this AppImage with --doctor to diagnose your setup.' >&2
+	command -v notify-send >/dev/null 2>&1 \
+		&& notify-send -a 'Wispr Flow' 'Wispr Flow did not start' "\$launch_error"
+	exit 1
+fi
 
 log_message "Executing: \$electron_bin \${electron_args[*]} \$*"
 cd "\$HOME" || exit 1

@@ -21,15 +21,14 @@ It prints `[PASS]` / `[WARN]` / `[FAIL]` lines with inline fix commands, grouped
 
 | Section | Checks |
 |---|---|
-| Display | Wayland/X11 detection, desktop family (KDE / GNOME / wlroots) |
+| Display | Wayland session present, desktop is Hyprland |
+| Native Flow Bar | the omarchy-shell plugin's socket exists |
 | Text Injection (uinput) | `/dev/uinput` writability, `input` group membership |
-| Clipboard | `wl-clipboard` (Wayland) / `xclip`/`xsel` (X11) |
+| Clipboard | `wl-clipboard` present |
 | Accessibility (AT-SPI) | `toolkit-accessibility` / a11y bus reachability |
-| GNOME Window Bridge | (GNOME only) extension installed + active |
 | Helper / Singleton / Crashes | helper binary present, stale lock, recent crash count |
 
-The exit status is non-zero if any check FAILs. Do me a favor and attach the
-full output to bug reports — it's the single most useful thing you can hand me.
+The exit status is non-zero if any check FAILs. Attach the full output to bug reports; it is the single most useful thing you can include.
 
 ## Paste does nothing / transcription doesn't get typed into my app
 
@@ -57,11 +56,9 @@ Run `--doctor` and work the failures top-down:
    set the selection with. Install it:
 
    ```bash
-   sudo dnf install wl-clipboard    # Fedora/RHEL
-   sudo apt install wl-clipboard    # Debian/Ubuntu
+   sudo pacman -S wl-clipboard
    ```
 
-   On X11, the equivalent dep is `xclip` or `xsel`.
 
 3. **Not in the `input` group and no uaccess ACL** — some distros don't ACL
    uinput through logind (Arch is the one that caught me), so group membership
@@ -72,32 +69,6 @@ Want the why behind all this? See
 udev rule grants access, and
 [learnings/wayland-injection.md](learnings/wayland-injection.md) for the
 mechanism.
-
-## Window / app detection wrong on GNOME
-
-`--doctor` shows the GNOME Window Bridge as not active, or the active app /
-running-apps list is empty or stale on a GNOME session.
-
-### Fix
-
-Here's the gotcha that ate an afternoon of mine: the bridge is a GNOME Shell
-extension, and **GNOME scans extensions only at session start**. Enabling it
-mid-session isn't enough on its own:
-
-```bash
-gnome-extensions info wispr-flow-window-bridge@wispr.flow
-gnome-extensions enable wispr-flow-window-bridge@wispr.flow
-```
-
-Then **log out and back in.** That's the part people skip. The first run after
-install quietly falls back to AT-SPI and logs a "log out and back in" notice;
-once you've cycled the session the bridge sticks around for good. The whole story
-is in [learnings/gnome-shell-extension.md](learnings/gnome-shell-extension.md).
-
-> [!NOTE]
-> This is GNOME-specific. KDE uses an in-process KWin script and wlroots
-> compositors (Sway, Hyprland) use AT-SPI — neither needs the extension, and
-> `--doctor` hides the GNOME Window Bridge section off GNOME.
 
 ## "no such table" / database errors
 
@@ -114,7 +85,7 @@ a table that was never created. The launcher has to be renamed to `wispr-flow`:
 
 - **Installed packages already do this** — the makers rename the binary for you
   and the launcher exports `ELECTRON_FORCE_IS_PACKAGED=true`, so you shouldn't
-  see this from a `.deb` / `.rpm` / AppImage. If you do, that's a bug — file it
+  see this from the AppImage. If you do, that's a bug — file it
   with your `--doctor` output.
 - **Run-in-place / manual builds** — you're on the hook for the rename here:
   move the Electron binary off `electron` (e.g. to `wispr-flow`) before you
@@ -222,7 +193,7 @@ to the `[WARN]` lines from Step 0 for which one.
 
    ```bash
    scripts/setup/fetch-helper-bin.sh x86_64   # or aarch64
-   ./build.sh --build deb
+   ./build.sh --exe "$HOME/Downloads/Wispr Flow Setup-v1.6.7.exe"
    ```
 
 2. **`HELPER_BIN` override is wrong** — the build respects an explicit override
@@ -231,7 +202,7 @@ to the `[WARN]` lines from Step 0 for which one.
 
    ```bash
    HELPER_BIN=/path/to/helper/target/release/wispr-flow-linux-helper \
-     ./build.sh --build deb
+     ./build.sh --exe "$HOME/Downloads/Wispr Flow Setup-v1.6.7.exe"
    ```
 
 See the helper section of [building.md](building.md#the-clean-room-helper-prebuilt-with-a-helper_bin-override).
@@ -262,37 +233,7 @@ busctl --user call :1.NNN /com/canonical/dbusmenu com.canonical.dbusmenu \
   Event isvu <id> clicked s "" 0
 ```
 
-## The Hub can't be moved, resized, maximized, tiled or Alt-Tabbed to
-
-The window is an X11 override-redirect (unmanaged) window: `xwininfo -id <id>`
-prints `Override Redirect State: yes` and `wmctrl -l` does not list it.
-Upstream creates the Hub with `focusable:false` on every platform, and
-Chromium's X11 backend makes any non-activatable top-level override-redirect.
-Under XWayland compositors (Hyprland, sway) the same window is always floating,
-has no border/shadow and ignores activation requests.
-
-### Fix
-
-Update to a build that carries the `WISPR_LINUX_HUB_FOCUSABLE` marker. There
-is no runtime workaround short of the patch; the Close control is the only one
-that works on an unmanaged window. See
-[issue #36](https://github.com/wispr-flow-linux/wispr-flow-linux/issues/36).
-
-## The Flow Bar is a bordered window in the middle of the screen
-
-Electron is running on native Wayland (`WISPR_USE_WAYLAND=1`, or the native
-Flow Bar mode) without the omarchy-shell plugin drawing the bar, so the
-transparent status window is treated as a normal toplevel: centred, bordered,
-tiled.
-
-### Fix
-
-Either install the plugin (`scripts/omarchy/install-flowbar-plugin.sh`, then
-restart Wispr Flow) or go back to XWayland: unset `WISPR_USE_WAYLAND` and set
-`WISPR_NATIVE_FLOWBAR=0`.
-
 ## More
 
-Curious which setups are actually validated, and which are only wired through?
-That's all spelled out in [compatibility.md](compatibility.md), and the design
-rationale behind these calls is in [decisions.md](decisions.md).
+The design rationale behind these calls is in [decisions.md](decisions.md);
+what was measured on real hardware is in [glass-validation.md](glass-validation.md).

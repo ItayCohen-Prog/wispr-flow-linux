@@ -19,9 +19,10 @@ in one repo so a single clone gives you a working setup.
 
 > **Only tested on Omarchy** (Arch Linux, Hyprland, omarchy-shell): Omarchy 4.0.2
 > with Hyprland 0.56.2 and Quickshell 0.3.1, on an NVIDIA laptop with a 1x and a
-> 1.6x monitor. Nothing here has been tried on any other distro or desktop. Other distros should follow the
-> upstream docs in `app/docs/` instead, and the Flow Bar plugin below will not
-> apply to them.
+> 1.6x monitor. Nothing here has been tried on any other distro or desktop, and the code
+> that supported other desktops was removed on purpose. For Debian, Fedora,
+> GNOME or KDE use the upstream port
+> [wispr-flow-linux](https://github.com/wispr-flow-linux/wispr-flow-linux).
 
 ## What is different from upstream
 
@@ -89,7 +90,7 @@ installer yourself and pass it in:
 curl -fL -o ~/Downloads/"Wispr Flow Setup-v1.6.7.exe" \
   "https://dl.wisprflow.com/wispr-flow/win32/x64/Wispr%20Flow%20Setup-v1.6.7.exe"
 cd ../app
-./build.sh --build appimage --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
+./build.sh --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
 ```
 
 This extracts the app from the installer, downloads the Linux Electron runtime,
@@ -154,14 +155,16 @@ wispr-flow --doctor
 wispr-flow
 ```
 
-Every check should pass. The launcher switches to native Wayland on its own
-when the plugin's socket exists. Push-to-talk is Ctrl+Space by default.
+Every check should pass, including the Flow Bar plugin socket. The launcher
+requires that socket: without the plugin running it refuses to start and tells
+you so, in the terminal and as a desktop notification. Push-to-talk is
+Ctrl+Space by default.
 
 ## Updating
 
 ```bash
 cd helper && cargo build --release && cd ..
-cd app && ./build.sh --build appimage --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
+cd app && ./build.sh --exe ~/Downloads/"Wispr Flow Setup-v1.6.7.exe"
 ```
 
 then repeat step 4 with a higher `pkgver`. Wispr has shipped newer versions

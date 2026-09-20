@@ -8,7 +8,25 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
 
 ## [Unreleased]
 
+### Removed
+
+- Everything that cannot run on Omarchy: the deb, rpm and Nix packaging and
+  their artifact tests, the GNOME, KDE/KWin, X11 and XInput helper backends,
+  the helper's VM validation scripts, the XWayland fallback (the cropped
+  status-surface and Hub-focusable patches, `WISPR_USE_WAYLAND`,
+  `WISPR_NATIVE_FLOWBAR=0`), the X11 clipboard and GNOME extension checks in
+  `--doctor`, and the upstream-only docs (installation, compatibility,
+  releasing, APT worker, KWin and GNOME learnings, docs style guide).
+- The `--build <fmt>` flag: `./build.sh` only produces the AppImage.
+
 ### Changed
+
+- The launcher requires a Wayland session and the omarchy-shell Flow Bar
+  plugin; when either is missing it refuses to start, logs why, prints it and
+  raises a desktop notification instead of silently falling back to XWayland.
+  `--doctor` checks the plugin socket.
+- `dependencies.sh` checks for the build tools and names the Arch packages
+  instead of installing across distros.
 
 - Keep the backing layer stable during entry and message animation to avoid
   Wayland resize jitter. Preserve recording-control geometry during entry.

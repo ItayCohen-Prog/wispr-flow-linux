@@ -97,10 +97,13 @@ assert_contains "$appdir/AppRun" 'run_doctor' \
 	"AppRun references run_doctor"
 assert_contains "$appdir/AppRun" 'build_electron_args' \
 	"AppRun calls build_electron_args"
-# AppImage runs from a FUSE mount that drops the setuid bit, so it MUST request
-# the appimage mode (which adds --no-sandbox in build_electron_args).
-assert_contains "$appdir/AppRun" "build_electron_args 'appimage'" \
-	"AppRun builds args in appimage mode (--no-sandbox path)"
+# AppImage runs from a FUSE mount that drops the setuid bit, so the launcher
+# library it ships MUST pass --no-sandbox, and AppRun must refuse to start
+# (with a reason) when build_electron_args fails.
+assert_contains "$appdir/usr/lib/wispr-flow/launcher-common.sh" "'--no-sandbox'" \
+	"launcher library passes --no-sandbox"
+assert_contains "$appdir/AppRun" 'launch_error' \
+	"AppRun reports why a launch was refused"
 
 # === App contents (asar + helper + patch markers) ===========================
 

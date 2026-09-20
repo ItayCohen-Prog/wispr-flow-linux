@@ -1,26 +1,23 @@
 //! OS-integration backend abstraction.
 //!
-//! One trait, swappable implementations. `x11` is the first target (this file's
-//! `detect()` picks it when `$DISPLAY` is set). Wayland (`wayland` + `libei`/
-//! `ydotool`) and a no-op `stub` come later. Keeping the protocol/dispatch layer
-//! (main.rs, proto.rs) backend-agnostic means new compositors are a new module,
-//! not a rewrite.
+//! Target session: Hyprland (wlroots-style Wayland) on Arch/Omarchy. One
+//! injection backend (`wayland`: uinput + in-process clipboard) composed with
+//! the AT-SPI active-app tracker; a no-op `stub` keeps the IPC handshake alive
+//! when `/dev/uinput` is not usable. The protocol/dispatch layer (main.rs,
+//! proto.rs) stays backend-agnostic.
 
 pub mod atspi_app;
 pub mod atspi_sel;
-pub mod gnome;
-pub mod kwin;
 pub mod stub;
 pub mod uinput;
 pub mod wayland;
 pub mod wl_clipboard;
-pub mod x11;
 
 pub type Result<T> = std::result::Result<T, String>;
 
 /// Channel a backend uses to push **helper-initiated** events to fd 3 (e.g.
 /// `AppInfoUpdate` focus events). A single writer thread owns fd 3 and drains
-/// this, so emitting from any thread (e.g. the KWin zbus dispatcher) is safe.
+/// this, so emitting from any thread (e.g. the AT-SPI watcher) is safe.
 pub type EventSink = std::sync::mpsc::Sender<serde_json::Value>;
 
 /// Clipboard paste chord selected by Wispr's `shift-insert` feature flag.
@@ -62,7 +59,7 @@ impl PasteShortcut {
 #[derive(Debug, Default, Clone)]
 pub struct ActiveApp {
     pub app_name: String,
-    /// No real "bundle id" on Linux — we use WM_CLASS / desktop-file id / exe basename.
+    /// No real "bundle id" on Linux — we use the exe basename / app name.
     pub bundle_id: String,
     pub window_title: String,
     /// Browser URL if derivable (else empty). Not wired yet.
@@ -136,83 +133,14 @@ pub fn active_app_payload(a: &ActiveApp) -> serde_json::Value {
     } })
 }
 
-/// A source of active-window / running-app identity + focus events, chosen
-/// **independently of the injection backend** (so active-app works even where
-/// injection doesn't, e.g. a GNOME session without `/dev/uinput`).
-///
-/// Layered "never blank" design:
-///   * Tier-2 premium, per-compositor: `kwin::KwinTracker` (KDE),
-///     `gnome::GnomeTracker` (GNOME Shell extension) — richest, most reliable
-///     identity (true app-id, full window list, robust focus).
-///   * Tier-1 universal baseline: `atspi_app::AtspiTracker` — desktop-agnostic
-///     over the accessibility bus; the fallback that covers wlroots
-///     (Sway/Hyprland/niri), GNOME pre-relogin, and incomplete-`_NET_*` X11.
-///
-/// All three trackers already expose `current` / `set_focus_detection` and a
-/// running-apps accessor; this trait unifies them (inherent methods win in
-/// resolution, so the delegating bodies don't recurse). `KwinTracker` names its
-/// accessor `running_apps()`, the others `get_running_apps()` — bridged here.
-pub trait ActiveAppProvider: Send {
-    fn current(&self) -> Option<ActiveApp>;
-    fn get_running_apps(&self) -> Vec<RunningApp>;
-    fn set_focus_detection(&self, active: bool);
-    fn name(&self) -> &'static str;
-}
-
-impl ActiveAppProvider for kwin::KwinTracker {
-    fn current(&self) -> Option<ActiveApp> {
-        self.current()
-    }
-    fn get_running_apps(&self) -> Vec<RunningApp> {
-        self.running_apps()
-    }
-    fn set_focus_detection(&self, active: bool) {
-        self.set_focus_detection(active)
-    }
-    fn name(&self) -> &'static str {
-        "kwin"
-    }
-}
-
-impl ActiveAppProvider for gnome::GnomeTracker {
-    fn current(&self) -> Option<ActiveApp> {
-        self.current()
-    }
-    fn get_running_apps(&self) -> Vec<RunningApp> {
-        self.get_running_apps()
-    }
-    fn set_focus_detection(&self, active: bool) {
-        self.set_focus_detection(active)
-    }
-    fn name(&self) -> &'static str {
-        "gnome-shell-extension"
-    }
-}
-
-impl ActiveAppProvider for atspi_app::AtspiTracker {
-    fn current(&self) -> Option<ActiveApp> {
-        self.current()
-    }
-    fn get_running_apps(&self) -> Vec<RunningApp> {
-        self.get_running_apps()
-    }
-    fn set_focus_detection(&self, active: bool) {
-        self.set_focus_detection(active)
-    }
-    fn name(&self) -> &'static str {
-        "atspi"
-    }
-}
-
-/// Composes an injection backend with an active-app provider. Injection,
-/// clipboard, and selection delegate to `inner`; active-app / running-apps /
-/// focus come from `inner` **first** (so the X11 backend's authoritative native
-/// `_NET_*` read wins where present) and fall back to the `provider` (so Wayland
-/// — where `inner` returns empty — and incomplete-`_NET_*` X11 still get
-/// identity; the provider also supplies focus events the inner backend lacks).
+/// Composes the injection backend with the AT-SPI active-app tracker.
+/// Injection, clipboard, and selection delegate to `inner`; active-app /
+/// running-apps / focus come from `inner` **first** and fall back to the
+/// tracker (the Wayland injector returns empty for all three, so in practice
+/// the tracker supplies identity, and it is the only source of focus events).
 struct Composed {
     inner: Box<dyn Backend>,
-    provider: Box<dyn ActiveAppProvider>,
+    tracker: atspi_app::AtspiTracker,
 }
 
 impl Backend for Composed {
@@ -232,7 +160,7 @@ impl Backend for Composed {
         {
             return Ok(inner);
         }
-        if let Some(app) = self.provider.current() {
+        if let Some(app) = self.tracker.current() {
             return Ok(app);
         }
         Ok(inner)
@@ -243,7 +171,7 @@ impl Backend for Composed {
         if !inner.is_empty() {
             return Ok(inner);
         }
-        Ok(self.provider.get_running_apps())
+        Ok(self.tracker.get_running_apps())
     }
 
     fn get_selected_text(&mut self) -> Result<Selection> {
@@ -259,10 +187,10 @@ impl Backend for Composed {
     }
 
     fn set_focus_detection(&mut self, active: bool) {
-        // Forward to both: the inner backend no-ops on Wayland/X11 today; the
-        // provider is what actually emits `AppInfoUpdate` focus events.
+        // Forward to both: the inner backend no-ops; the tracker is what
+        // actually emits `AppInfoUpdate` focus events.
         self.inner.set_focus_detection(active);
-        self.provider.set_focus_detection(active);
+        self.tracker.set_focus_detection(active);
     }
 
     fn name(&self) -> &'static str {
@@ -270,30 +198,22 @@ impl Backend for Composed {
     }
 }
 
-/// Pick a backend for the current session: an injection backend and (when
-/// available) an active-app provider, chosen **independently** and composed.
-///
-/// Injection order: on a Wayland session XWayland usually also sets `$DISPLAY`,
-/// but the X11 backend is largely blind there (XTEST doesn't reach native
-/// Wayland windows). So prefer Wayland+uinput whenever `$WAYLAND_DISPLAY` is set
-/// and uinput is usable, fall through to X11 for a genuine X11 session (or if
-/// uinput is unavailable), then a no-op stub that keeps the helper handshaking.
-///
-/// The active-app provider is selected separately (and even attaches to the stub
-/// injector), so active-window identity survives an injection-less session.
+/// Pick a backend for the current session: the injection backend and (when the
+/// a11y bus is reachable) the AT-SPI active-app tracker, chosen
+/// **independently** and composed — so active-window identity survives an
+/// injection-less session (no `/dev/uinput` access).
 pub fn detect(events: EventSink) -> Box<dyn Backend> {
-    let provider = pick_active_app_provider(events);
+    let tracker = pick_active_app_tracker(events);
     let injector = pick_injector();
-    match provider {
-        Some(p) => {
+    match tracker {
+        Some(t) => {
             log::info!(
-                "backend: {} injection + {} active-app provider",
-                injector.name(),
-                p.name()
+                "backend: {} injection + atspi active-app provider",
+                injector.name()
             );
             Box::new(Composed {
                 inner: injector,
-                provider: p,
+                tracker: t,
             })
         }
         None => {
@@ -304,15 +224,17 @@ pub fn detect(events: EventSink) -> Box<dyn Backend> {
 }
 
 /// True iff env var `var` is set to a **non-empty** value. An empty
-/// `WAYLAND_DISPLAY`/`DISPLAY` (some launchers/sessions export a blank value)
-/// must be treated as unset: `var_os(...).is_some()` is `true` for an empty
-/// value, which would otherwise make `detect()` pick the Wayland backend on a
-/// pure-X11 host and fail injection ("could not find wayland compositor").
+/// `WAYLAND_DISPLAY` (some launchers/sessions export a blank value) must be
+/// treated as unset: `var_os(...).is_some()` is `true` for an empty value,
+/// which would make `detect()` try the Wayland backend and fail injection
+/// ("could not find wayland compositor").
 fn env_set(var: &str) -> bool {
     std::env::var_os(var).is_some_and(|v| !v.is_empty())
 }
 
-/// Choose the injection/clipboard/selection backend for this session.
+/// Choose the injection/clipboard/selection backend for this session: Wayland
+/// (uinput + clipboard) when `$WAYLAND_DISPLAY` is set and `/dev/uinput` is
+/// writable, else the no-op stub that keeps the helper handshaking.
 fn pick_injector() -> Box<dyn Backend> {
     if env_set("WAYLAND_DISPLAY") {
         if uinput::UInput::available() {
@@ -321,85 +243,37 @@ fn pick_injector() -> Box<dyn Backend> {
                     log::info!("injection: Wayland (uinput + wl-clipboard)");
                     return Box::new(b);
                 }
-                Err(e) => log::error!("Wayland backend init failed, trying X11: {e}"),
+                Err(e) => log::error!("Wayland backend init failed, falling back to stub: {e}"),
             }
         } else {
-            log::warn!("Wayland session but /dev/uinput is not writable — injection unavailable. \
-                        Grant access via a logind uaccess udev rule, the `uinput` group, or run the \
-                        ydotoold daemon. Trying X11/XWayland fallback (limited).");
+            log::warn!(
+                "Wayland session but /dev/uinput is not writable — injection unavailable. \
+                 Grant access via a logind uaccess udev rule or the `uinput` group."
+            );
         }
-    }
-    if env_set("DISPLAY") {
-        match x11::X11Backend::connect() {
-            Ok(b) => {
-                log::info!("injection: X11 (XTEST)");
-                return Box::new(b);
-            }
-            Err(e) => log::error!("X11 backend init failed, falling back to stub: {e}"),
-        }
+    } else {
+        log::warn!("WAYLAND_DISPLAY is not set — injection unavailable");
     }
     log::warn!("injection: stub (no-op) — OS integration disabled");
     Box::new(stub::StubBackend)
 }
 
-/// Choose the active-app provider for this session — independent of injection.
-fn pick_active_app_provider(events: EventSink) -> Option<Box<dyn ActiveAppProvider>> {
-    if env_set("WAYLAND_DISPLAY") {
-        // Tier-2 compositor bridge first (richest), AT-SPI as the universal fallback.
-        if wayland::is_kde() {
-            match kwin::KwinTracker::start(events.clone()) {
-                Ok(t) => {
-                    log::info!("active-app: KWin scripting bridge (KDE)");
-                    return Some(Box::new(t));
-                }
-                Err(e) => log::warn!("KWin bridge unavailable ({e}); falling back to AT-SPI"),
-            }
-        } else if is_gnome() {
-            match gnome::GnomeTracker::start(events.clone()) {
-                Ok(t) => {
-                    log::info!("active-app: GNOME Shell extension bridge");
-                    return Some(Box::new(t));
-                }
-                // Err is the expected first-run state (extension installed but the
-                // shell only scans extensions at login) — fall back to AT-SPI so
-                // identity is never blank in the gap before the user re-logs in.
-                Err(e) => {
-                    log::warn!("GNOME extension bridge not active ({e}); falling back to AT-SPI")
-                }
-            }
-        }
-        return start_atspi(events, "Wayland");
+/// Start the AT-SPI active-app tracker — independent of injection. `None` when
+/// the accessibility bus is unreachable.
+fn pick_active_app_tracker(events: EventSink) -> Option<atspi_app::AtspiTracker> {
+    if !env_set("WAYLAND_DISPLAY") {
+        return None;
     }
-    if env_set("DISPLAY") {
-        // X11: the X11 backend reads `_NET_*` natively and is authoritative (the
-        // `Composed` inner-first ordering uses it). Attach AT-SPI as a *fallback*
-        // so WMs with incomplete `_NET_*` still resolve identity, and so X11 gets
-        // focus events (which the native backend doesn't emit yet) for free.
-        return start_atspi(events, "X11 fallback (native _NET_* is primary)");
-    }
-    None
-}
-
-fn start_atspi(events: EventSink, ctx: &str) -> Option<Box<dyn ActiveAppProvider>> {
     match atspi_app::AtspiTracker::start(events) {
         Ok(t) => {
-            log::info!("active-app: AT-SPI universal tracker [{ctx}]");
-            Some(Box::new(t))
+            log::info!("active-app: AT-SPI tracker");
+            Some(t)
         }
         Err(e) => {
-            log::warn!("AT-SPI active-app unavailable ({e}) [{ctx}]");
+            log::warn!("AT-SPI active-app unavailable ({e})");
             None
         }
     }
-}
-
-/// Heuristic: is this a GNOME session? Checks the standard desktop-environment
-/// env vars; `contains("GNOME")` handles Ubuntu's `XDG_CURRENT_DESKTOP=ubuntu:GNOME`.
-fn is_gnome() -> bool {
-    let probe = |k: &str| std::env::var(k).unwrap_or_default().to_ascii_uppercase();
-    probe("XDG_CURRENT_DESKTOP").contains("GNOME")
-        || probe("XDG_SESSION_DESKTOP").contains("GNOME")
-        || std::env::var_os("GNOME_SHELL_SESSION_MODE").is_some()
 }
 
 #[cfg(test)]

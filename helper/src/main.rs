@@ -6,10 +6,10 @@
 //!   * framing: escaped pretty-JSON envelopes joined by `'|'`
 //!   * answers `IsReady` with `ACK` (the readiness + keepalive handshake)
 //!
-//! This is the skeleton: handshake + dispatch + the highest-value X11 commands
-//! (PasteText, SimulateKeyPress, GetActiveAppInfo, GetRunningApps,
-//! GetSelectedTextViaCopy, GetAccessibilityStatus). Everything else is ACK'd as a
-//! safe no-op so the app stays healthy. See README.md for what's next.
+//! Handshake + dispatch + the OS-integration commands (PasteText,
+//! SimulateKeyPress, GetActiveAppInfo, GetRunningApps, GetSelectedTextViaCopy,
+//! GetAccessibilityStatus, focus events). Everything else is ACK'd as a safe
+//! no-op so the app stays healthy. Targets Hyprland (Wayland); see README.md.
 
 mod backend;
 mod capture;
@@ -92,8 +92,8 @@ fn main() {
     let ipc = IpcWriter { tx: tx.clone() };
     // Global key capture: streams `KeypressEvent`s on fd 3 so push-to-talk and
     // the in-app shortcut recorder work (the app has no hotkey detection of its
-    // own — see capture/mod.rs). XInput2 on X11, evdev elsewhere. The returned
-    // handle answers `CheckStaleKeys`. Independent of the focus/injection backend.
+    // own — see capture/mod.rs). Read from evdev. The returned handle answers
+    // `CheckStaleKeys`. Independent of the focus/injection backend.
     let held_keys = capture::spawn(tx.clone());
     // The backend gets its own sink for async helper-initiated events (focus).
     let mut be = backend::detect(tx);
@@ -245,7 +245,7 @@ fn handle_request(
             ));
         }
         "RequestAccessibilityPermission" | "StartAccessibilityServices" => {
-            // No OS permission gate equivalent on Linux X11 — ACK as success.
+            // No OS permission gate equivalent on Linux — ACK as success.
             ipc.send(&proto::ack(uuid));
         }
 

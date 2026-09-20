@@ -199,7 +199,7 @@ copy-probe stays, but only as a fallback.
 
 ### References
 
-- [compatibility.md](compatibility.md) — AT-SPI backend coverage.
+- compatibility notes (removed 2026-09-20 with the multi-desktop support).
 
 ---
 
@@ -246,8 +246,7 @@ active-app/focus is per-compositor.
 
 ### References
 
-- [learnings/kwin-zbus-tokio.md](learnings/kwin-zbus-tokio.md);
-  [learnings/gnome-shell-extension.md](learnings/gnome-shell-extension.md).
+- the KWin and GNOME learnings pages (removed 2026-09-20 with those backends).
 
 ---
 
@@ -363,7 +362,7 @@ runtime. **Never** use `zbus::blocking` for a service in this codebase.
 
 ### References
 
-- [learnings/kwin-zbus-tokio.md](learnings/kwin-zbus-tokio.md).
+- the KWin learnings page (removed 2026-09-20 with that backend).
 
 ---
 
@@ -498,9 +497,10 @@ On Omarchy the shell draws the bar and Electron runs on native Wayland.
 
 ### Consequences
 
-- Omarchy-only for now: the plugin depends on omarchy-shell's plugin loader,
-  `Quickshell.Hyprland.focusedMonitor` and `notify-send`. Other Wayland
-  desktops keep the XWayland path.
+- Omarchy-only: the plugin depends on omarchy-shell's plugin loader and
+  `Quickshell.Hyprland.focusedMonitor`. Since 2026-09-20 the XWayland path is
+  gone: the launcher requires the plugin's socket and refuses to start
+  without it, and the cropped-surface and Hub-focusable patches were removed.
 - Custom-component notifications (upstream renders a bespoke React view for
   e.g. `AudioQualityIssue`) show text only; their in-component click behaviour
   is not reproduced.

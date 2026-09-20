@@ -10,15 +10,13 @@
 # The Flow Bar is a transparent, always-on-top Electron BrowserWindow ("Flow
 # Status Indicator") whose renderer ALSO owns microphone capture. On native
 # Wayland an Electron window cannot position itself or shape its input region,
-# so the launcher pins the app to XWayland and linux-flowbar-shape.sh crops the
-# X11 surface. That costs a single, X11-wide device scale (wrong on mixed-DPI
-# setups) and an unmanaged Hub. A layer-shell surface anchored to the bottom
-# of the focused monitor is what the bar has been emulating all along.
+# so on Omarchy the omarchy-shell plugin draws the bar as a layer-shell
+# surface anchored to the bottom of the focused monitor, and the Electron
+# window is never mapped. The launcher always sets WISPR_NATIVE_FLOWBAR=1.
 #
-# THE PATCH (one insertion, inert unless enabled)
-# ----------------------------------------------
-# Right after the status window is constructed we add, gated on
-# WISPR_NATIVE_FLOWBAR=1 in the app's environment:
+# THE PATCH (one insertion, gated on WISPR_NATIVE_FLOWBAR=1)
+# ---------------------------------------------------------
+# Right after the status window is constructed we add:
 #
 #   * a reconnecting `net` client to $WISPR_FLOWBAR_SOCKET (default
 #     $XDG_RUNTIME_DIR/wispr-flow/flowbar.sock), newline-delimited JSON,
@@ -30,12 +28,12 @@
 #     status:startClicked / status:stopClicked / status:cancelClicked /
 #     notification:callback are re-emitted on ipcMain, exactly as if the
 #     hidden renderer had sent them;
-#   * no-op `show`/`showInactive` (and the __wisprShowInactive/__wisprShow
-#     slots linux-flowbar-shape.sh keys on) so the Electron window is never
-#     mapped: the hidden renderer keeps recording audio, the shell draws.
+#   * no-op `show`/`showInactive` (and the `__wisprShowInactive`/`__wisprShow`
+#     aliases) so the Electron window is never mapped: the hidden renderer
+#     keeps recording audio, the shell draws.
 #
-# Without the env var the inserted block is skipped entirely, so XWayland
-# builds behave exactly as before.
+# Without the env var the inserted block is skipped entirely and the app
+# behaves as upstream shipped it.
 #
 # Anchor: the only BrowserWindow whose preload path contains
 # `"status","preload.js"` and whose config carries
