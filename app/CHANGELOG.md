@@ -15,9 +15,12 @@ Flow app version is tracked separately by the `+wispr{X.Y.Z}` suffix.
 - Add `install-flowbar-plugin.sh --reload` and runtime-version verification so
   cached QML cannot be mistaken for a successfully activated update.
 
-- Replace the flat capsule tint with a frosted glass material, shaped highlights,
-  inset depth and glass buttons. Add a scoped Hyprland blur preset and constrain
-  the native layer to the capsule's bounds.
+- Make the capsule liquid glass: it snapshots the desktop beneath the layer
+  the instant before it forms, refracts it through a Snell lens at the rim,
+  frosts it once, and picks light or dark glass from what is under it. Glyphs
+  sit bare on the glass; message actions are plain capsules. The glass forms
+  from a droplet and pulls back into one. No compositor blur is needed, so the
+  scoped Hyprland blur preset is replaced by a single `no_anim` layer rule.
 
 ### Added
 

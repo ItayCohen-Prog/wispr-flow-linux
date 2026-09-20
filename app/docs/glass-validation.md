@@ -1,5 +1,39 @@
 # Glass capsule validation
 
+## Liquid glass revision, 2026-09-20
+
+Before this revision two capture designs were tried on the real desktop
+(Hyprland 0.56.2, Quickshell 0.3.1, NVIDIA RTX 4070 Laptop, 1920x1080 at 1x
+and 2560x1600 at 1.6x):
+
+- A live `ScreencopyView` of the output under the layer: the capsule saw
+  itself from the previous frame (recursive image). Cost while visible was
+  about 3 % of a core for the overlay plus 1.6 % for Hyprland.
+- The same with a `no_screen_share` layer rule: Hyprland renders the layer as
+  a black box in every screencopy frame (verified with `grim`), so nothing
+  behind the capsule is visible to it.
+
+The shipped design captures one frame before the layer forms. Measured from
+the socket message that shows the capsule: the frame arrived after 10-14 ms and
+the adaptive luminance after 26-30 ms, on three consecutive shows. The capture
+session ends when the capsule hides.
+
+Ten-second samples of the preview instance and the compositor together, as a
+percent of one logical core, with the plugin on the 1920x1080 output:
+
+| State | Preview | Hyprland |
+| --- | ---: | ---: |
+| Hidden | 0.0 % | 0.2-0.5 % (desktop baseline) |
+| Listening, level updates at 20 Hz | 2.6 % | 3.2 % |
+| Processing | 2.4 % | 3.0 % |
+
+GPU utilisation reported by `nvidia-smi` stayed at 0-5 %. These are short CPU
+samples, not power measurements. The recording of the entrance (60 fps) shows
+the droplet reaching the pill in about 200 ms with a small overshoot; the exit
+takes about 270 ms. Eleven QML behaviour tests and the four Node regression
+tests pass offscreen.
+
+
 ## Runtime reload and opening fix, 2026-09-20
 
 The earlier activation check was insufficient: the on-disk plugin and socket

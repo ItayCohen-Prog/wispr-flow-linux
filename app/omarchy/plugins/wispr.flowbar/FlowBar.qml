@@ -101,7 +101,7 @@ Item {
   // `omarchy-shell wisprflowbar <fn> [args]` for scripted testing.
   IpcHandler {
     target: "wisprflowbar"
-    function version(): string { return "0.3.1" }
+    function version(): string { return "0.4.0" }
     function inject(line: string): string { root.apply(line); return "ok" }
     function press(action: string): string { root.send(action); return "ok" }
     function state(): string { return JSON.stringify(root.state) }
@@ -118,15 +118,17 @@ Item {
       id: panel
       required property var modelData
       screen: modelData
-      visible: (root.shown || capsule.opacity > 0) && modelData.name === root.focusedName
+      readonly property bool focusedHere: modelData.name === root.focusedName
+      visible: (root.shown || capsule.visible) && focusedHere
       anchors { bottom: true }
-      implicitWidth: Math.min(panel.screen.width - 32, 356) + 48
+      // 32 px each side for the rim lens, dispersion and shadow.
+      implicitWidth: Math.min(panel.screen.width - 32, 356) + 64
       // A layer resize is a Wayland configure/ack transaction. Keep the
       // backing window stable while Qt animates the capsule inside it.
-      property int bufferHeight: 94
+      property int bufferHeight: 106
       implicitHeight: bufferHeight
       function accommodateContent() {
-        var needed = Math.ceil(capsule.targetHeight) + 48
+        var needed = Math.ceil(capsule.targetHeight) + 60
         if (!visible || needed > bufferHeight) bufferHeight = needed
       }
       onVisibleChanged: if (!visible) accommodateContent()
@@ -138,6 +140,29 @@ Item {
       // Only the pill takes input; the rest of the surface is click-through
       // so the desktop below stays usable.
       mask: Region { item: capsule }
+
+      // The desktop under the layer, captured the instant before the glass
+      // forms. The layer maps transparent first so the compositor commits a
+      // frame for the capture; the capsule waits for `ready` (or the
+      // fallback) before it appears, and the session ends when hidden.
+      GlassBackdrop {
+        id: backdrop
+        width: panel.width; height: panel.height
+        captureScreen: panel.screen
+        dpr: panel.screen.devicePixelRatio
+        active: root.translucent && panel.visible
+        originX: Math.floor((panel.screen.width - panel.width) / 2)
+        originY: panel.screen.height - panel.height
+      }
+      Timer {
+        id: snapshotFallback
+        interval: 150
+        running: root.shown && root.translucent && !backdrop.ready
+        onTriggered: panel.snapshotTimedOut = true
+      }
+      property bool snapshotTimedOut: false
+      onFocusedHereChanged: snapshotTimedOut = false
+      Connections { target: root; function onShownChanged() { if (!root.shown) panel.snapshotTimedOut = false } }
 
       GlassCapsule {
         id: capsule
@@ -152,6 +177,8 @@ Item {
         active: panel.visible
         reducedMotion: root.reducedMotion
         translucent: root.translucent
+        backdrop: backdrop
+        materialReady: !root.translucent || backdrop.ready || panel.snapshotTimedOut
         onTargetHeightChanged: panel.accommodateContent()
         Component.onCompleted: panel.accommodateContent()
         onCancel: root.send("status:cancelClicked")

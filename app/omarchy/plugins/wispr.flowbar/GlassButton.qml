@@ -1,40 +1,42 @@
 import QtQuick
 
+// A text action inside the glass card. Apple keeps glass off glass, so
+// these are plain capsules: the primary one is filled with the ink colour,
+// the others are a faint wash of it.
 Item {
   id: button
   property string label: ""
-  property string glyph: ""
   property real maximumWidth: 400
   property bool primary: false
+  property bool dark: true
   property bool reduceMotion: false
+  readonly property color ink: dark ? "#ffffff" : "#1c1c1e"
   readonly property bool hovered: pointer.containsMouse
   signal clicked()
-  implicitWidth: glyph !== "" ? 30 : Math.min(maximumWidth, Math.max(72, caption.implicitWidth + 24))
+  implicitWidth: Math.min(maximumWidth, Math.max(72, caption.implicitWidth + 28))
   implicitHeight: 30
-  GlassMaterial {
+  Rectangle {
     anchors.fill: parent
-    radius: 15
-    shadow: false
-    tint: button.primary ? "#388f9daf" : "#107e8ca2"
-    emphasis: pointer.pressed ? 1 : pointer.containsMouse ? 0.6 : button.primary ? 0.25 : 0
-    Behavior on emphasis { NumberAnimation { duration: button.reduceMotion ? 0 : 120 } }
+    radius: height / 2
+    color: button.ink
+    opacity: button.primary ? (pointer.pressed ? 0.78 : pointer.containsMouse ? 0.92 : 1)
+                            : (pointer.pressed ? 0.26 : pointer.containsMouse ? 0.19 : 0.13)
+    Behavior on opacity { NumberAnimation { duration: button.reduceMotion ? 0 : 120 } }
   }
-  scale: pointer.pressed ? 0.94 : 1
-  Behavior on scale { NumberAnimation { duration: button.reduceMotion ? 0 : 100; easing.type: Easing.OutCubic } }
+  scale: pointer.pressed ? 0.96 : 1
+  Behavior on scale { NumberAnimation { duration: button.reduceMotion ? 0 : 110; easing.type: Easing.OutCubic } }
   Text {
     id: caption
     anchors.centerIn: parent
-    width: Math.max(0, parent.width - 12)
+    width: Math.max(0, parent.width - 16)
     horizontalAlignment: Text.AlignHCenter
     elide: Text.ElideRight
-    text: button.glyph || button.label
+    text: button.label
     textFormat: Text.PlainText
-    color: "#ffffff"
-    style: Text.Raised
-    styleColor: "#60303a50"
-    font.family: "sans-serif"
-    font.pixelSize: button.glyph !== "" ? 16 : 12
-    font.weight: Font.Medium
+    color: button.primary ? (button.dark ? "#1c1c1e" : "#ffffff") : button.ink
+    font.family: "Adwaita Sans"
+    font.pixelSize: 13
+    font.weight: Font.DemiBold
   }
   Accessible.role: Accessible.Button
   Accessible.name: label

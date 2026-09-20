@@ -10,7 +10,7 @@ TestCase {
   FlowBar.GlassCapsule { id: capsule; anchors.centerIn: parent }
   SignalSpy { id: cancelSpy; target: capsule; signalName: "cancel" }
   SignalSpy { id: stopSpy; target: capsule; signalName: "stop" }
-  function init() { capsule.reducedMotion = true; capsule.mode = "hidden"; capsule.notification = null; capsule.availableWidth = 400; capsule.availableHeight = 500; capsule.active = true; capsule.level = 0 }
+  function init() { capsule.reducedMotion = true; capsule.mode = "hidden"; capsule.notification = null; capsule.availableWidth = 400; capsule.availableHeight = 500; capsule.active = true; capsule.level = 0; capsule.materialReady = true }
   function test_idle_has_no_motion() {
     compare(capsule.wanted, false); compare(capsule.processing, false)
     tryCompare(capsule, "visible", false)
@@ -54,6 +54,17 @@ TestCase {
     compare(capsule.width, 176); compare(capsule.height, 46)
     mouseClick(capsule, 23, 23); compare(cancelSpy.count, 1)
     mouseClick(capsule, 153, 23); compare(stopSpy.count, 1)
+  }
+  function test_waits_for_backdrop_before_forming() {
+    capsule.materialReady = false; capsule.mode = "listening"
+    wait(60); compare(capsule.presence, 0); compare(capsule.form, 0)
+    capsule.materialReady = true
+    tryCompare(capsule, "presence", 1); compare(capsule.form, 1)
+  }
+  function test_glyph_buttons_have_no_material() {
+    capsule.mode = "listening"; wait(10)
+    verify(findChild(capsule, "levelBar0") !== null)
+    compare(capsule.dark, true); compare(capsule.ink, "#ffffff")
   }
   function test_notification_without_recording() {
     capsule.notification = {title:"Microphone unavailable",body:"Choose another input device.",actions:[]}
