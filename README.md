@@ -1,7 +1,7 @@
 # Wispr Flow on Omarchy
 
-[![Native capsule checks](https://github.com/Webivize/wispr-flow-linux/actions/workflows/capsule-tests.yml/badge.svg)](https://github.com/Webivize/wispr-flow-linux/actions/workflows/capsule-tests.yml)
-[![Helper checks](https://github.com/Webivize/wispr-flow-linux/actions/workflows/helper.yml/badge.svg)](https://github.com/Webivize/wispr-flow-linux/actions/workflows/helper.yml)
+[![Native capsule checks](https://github.com/Webivize/wispr-flow-omarchy/actions/workflows/capsule-tests.yml/badge.svg)](https://github.com/Webivize/wispr-flow-omarchy/actions/workflows/capsule-tests.yml)
+[![Helper checks](https://github.com/Webivize/wispr-flow-omarchy/actions/workflows/helper.yml/badge.svg)](https://github.com/Webivize/wispr-flow-omarchy/actions/workflows/helper.yml)
 
 [Wispr Flow](https://wisprflow.ai) voice dictation on Linux, with a native
 liquid glass Flow Bar drawn by the Omarchy shell. It is a fork of the community
