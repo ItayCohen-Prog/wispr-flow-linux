@@ -27,16 +27,11 @@ pub type EventSink = std::sync::mpsc::Sender<serde_json::Value>;
 /// Terminals treat a raw Ctrl+V key event as an application shortcut (Codex
 /// uses it for image paste), while Shift+Insert is handled by the terminal as
 /// text paste and arrives as bracketed paste input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum PasteShortcut {
     ControlV,
+    #[default]
     ShiftInsert,
-}
-
-impl Default for PasteShortcut {
-    fn default() -> Self {
-        Self::ShiftInsert
-    }
 }
 
 impl PasteShortcut {

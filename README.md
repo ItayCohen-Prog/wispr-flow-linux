@@ -1,10 +1,21 @@
 # Wispr Flow on Omarchy
 
-My working setup of [Wispr Flow](https://wisprflow.ai) voice dictation on
-Linux. It is a fork of the community port
-[wispr-flow-linux](https://github.com/wispr-flow-linux/wispr-flow-linux) and its
-Rust [helper](https://github.com/wispr-flow-linux/helper), kept together in one
-repo so a single clone gives you everything I run.
+[![Native capsule checks](https://github.com/Webivize/wispr-flow-linux/actions/workflows/capsule-tests.yml/badge.svg)](https://github.com/Webivize/wispr-flow-linux/actions/workflows/capsule-tests.yml)
+[![Helper checks](https://github.com/Webivize/wispr-flow-linux/actions/workflows/helper.yml/badge.svg)](https://github.com/Webivize/wispr-flow-linux/actions/workflows/helper.yml)
+
+[Wispr Flow](https://wisprflow.ai) voice dictation on Linux, with a native
+liquid glass Flow Bar drawn by the Omarchy shell. It is a fork of the community
+port [wispr-flow-linux](https://github.com/wispr-flow-linux/wispr-flow-linux)
+and its Rust [helper](https://github.com/wispr-flow-linux/helper), kept together
+in one repo so a single clone gives you a working setup.
+
+![The Flow Bar listening, as liquid glass over light content](docs/media/flow-bar-listening.png)
+
+![The same bar over dark content](docs/media/flow-bar-dark.png)
+
+![A message card with actions](docs/media/flow-bar-message.png)
+
+![The bar forming from a droplet and pulling back into one](docs/media/flow-bar-motion.gif)
 
 > **Only tested on Omarchy** (Arch Linux, Hyprland, omarchy-shell): Omarchy 4.0.2
 > with Hyprland 0.56.2 and Quickshell 0.3.1, on an NVIDIA laptop with a 1x and a
@@ -16,9 +27,12 @@ repo so a single clone gives you everything I run.
 
 - **Native Flow Bar on Omarchy.** An omarchy-shell (Quickshell) plugin draws the
   Flow Bar as a layer-shell surface, so the app runs on native Wayland and the
-  Hub is a normal managed window. The bar is liquid glass: it refracts a
-  snapshot of the desktop beneath it (`app/docs/glass-capsule.md`). The design
-  notes are in `app/docs/decisions.md` (D-010).
+  Hub is a normal managed window. The bar is liquid glass in the sense Apple
+  describes it: it snapshots the desktop beneath it the instant before it
+  appears and refracts that through a lens at the rim, frosts it, and picks
+  light or dark glass from what is under it. The material notes are in
+  `app/docs/glass-capsule.md`; the architecture decision is
+  `app/docs/decisions.md` (D-010).
 - **Helper fix for a stuck Ctrl key.** The upstream helper could re-press a
   modifier you were physically holding on its virtual keyboard, which left Ctrl
   stuck system-wide until the helper was killed. The helper here waits for held
